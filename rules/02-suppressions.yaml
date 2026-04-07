@@ -1,0 +1,20 @@
+rules:
+  - name: suppress-known-webhook-timeout-noise
+    match:
+      check: webhook-timeout
+      severity: info
+    suppress: true
+
+  - name: suppress-dev-scaled-zero
+    match:
+      namespace: dev
+      check: deployment-scaled-zero
+    suppress: true
+
+  - name: suppress-known-public-metrics-gateway
+    match:
+      namespace: observability
+      kind: Service
+      name: metrics-gateway
+      summaryContains: public
+    suppress: true

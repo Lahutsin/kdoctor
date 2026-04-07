@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "name": "json-prod-public-exposure",
+      "match": {
+        "namespace": "prod",
+        "summaryContains": "public",
+        "severity": "warning"
+      },
+      "setSeverity": "critical",
+      "addRecommendation": "Public exposure in prod must be reviewed before release.",
+      "addReference": "ticket=SEC-1234",
+      "appendSummarySuffix": "[json-rule]"
+    },
+    {
+      "name": "json-suppress-known-noise",
+      "match": {
+        "check": "pv-orphaned",
+        "severity": "info"
+      },
+      "suppress": true
+    }
+  ]
+}

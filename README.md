@@ -1,6 +1,6 @@
 # kdoctor
 
-Version: 0.0.2.1-beta
+Version: 0.0.2.2-beta
 
 Minimal Kubernetes troubleshooter written in Go. It connects to your cluster, runs a bundle of quick health checks, and prints a compact table of findings with recommendations.
 
@@ -106,7 +106,9 @@ go run ./cmd/kdoctor \
 - `ci`: full JSON report with `--fail-on warning`
 
 ## Rules
-Rules can be provided as YAML or JSON and are applied after the checks run. Each rule can match on category, check, kind, namespace, name, severity, or `summaryContains`, then suppress the issue or modify severity/recommendation metadata.
+Rules can be provided as YAML or JSON and are applied after the checks run. Each rule can match on category, check, kind, namespace, name, severity, or `summaryContains`, then suppress the issue or modify severity/recommendation metadata. Supported actions are `suppress`, `setSeverity`, `addRecommendation`, `addReference`, and `appendSummarySuffix`.
+
+Rules are applied in file order. A matching suppression rule stops further processing for that issue. Ready-to-use examples are available in `./rules/`.
 
 Example:
 ```yaml

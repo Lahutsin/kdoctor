@@ -1,0 +1,18 @@
+rules:
+  - name: add-runbook-for-api-exposure
+    match:
+      check: api-public-endpoint
+    addReference: "runbook=https://internal.example/runbooks/public-api-endpoint"
+    addRecommendation: "Validate CIDR allowlists, private endpoint configuration, and emergency revocation steps."
+
+  - name: annotate-security-drift
+    match:
+      category: security
+      summaryContains: drift
+    appendSummarySuffix: "[track-in-security-review]"
+
+  - name: enrich-secret-read-findings
+    match:
+      check: serviceaccount-cross-namespace-secrets
+    addReference: "owner=platform-iam"
+    addRecommendation: "Verify whether the cross-namespace trust boundary is still approved."

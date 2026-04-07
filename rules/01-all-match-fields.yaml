@@ -1,0 +1,33 @@
+rules:
+  - name: match-by-category
+    match:
+      category: security
+      severity: info
+    appendSummarySuffix: "[security-baseline-review]"
+
+  - name: match-by-check
+    match:
+      check: serviceaccount-automount
+    addRecommendation: "Review whether the workload can use automountServiceAccountToken=false by default."
+
+  - name: match-by-kind
+    match:
+      kind: Ingress
+      severity: warning
+    addReference: "owner=platform-networking"
+
+  - name: match-by-namespace
+    match:
+      namespace: prod
+    appendSummarySuffix: "[prod-scope]"
+
+  - name: match-by-name
+    match:
+      name: coredns
+    addReference: "runbook=https://internal.example/runbooks/coredns"
+
+  - name: match-by-summary-contains
+    match:
+      summaryContains: public
+      severity: warning
+    addRecommendation: "Confirm exposure is intentional and protected by authentication plus source restrictions."

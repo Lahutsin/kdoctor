@@ -1,0 +1,22 @@
+rules:
+  - name: tighten-coredns-prod-signal
+    match:
+      namespace: kube-system
+      kind: Deployment
+      name: coredns
+    addReference: "pager=platform-oncall"
+    appendSummarySuffix: "[core-dns-critical-service]"
+
+  - name: tenant-admin-ingress-review
+    match:
+      kind: Ingress
+      namespace: tenant-a
+      summaryContains: admin
+    setSeverity: critical
+    addRecommendation: "Administrative ingress paths in tenant namespaces require documented authn/authz and explicit approval."
+
+  - name: nodepool-public-review
+    match:
+      kind: Node
+      check: managed-node-perimeter
+    addReference: "review=cloud-firewall-team"

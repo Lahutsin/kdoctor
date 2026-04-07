@@ -1,0 +1,23 @@
+rules:
+  - name: prod-quota-escalation
+    match:
+      namespace: prod
+      check: resource-quota
+      severity: warning
+    setSeverity: critical
+    addRecommendation: "Treat quota pressure in prod as release-blocking."
+
+  - name: escalate-public-loadbalancers
+    match:
+      check: managed-public-loadbalancer
+      severity: warning
+    setSeverity: critical
+    addRecommendation: "Require explicit allowlists, private ingress, or a documented exception before promotion."
+
+  - name: escalate-privileged-prod-pods
+    match:
+      category: security
+      namespace: prod
+      summaryContains: privileged
+    setSeverity: critical
+    addRecommendation: "Escalate to platform security and validate host access, seccomp, capabilities, and runtime need."
