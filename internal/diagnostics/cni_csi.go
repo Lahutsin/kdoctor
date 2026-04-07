@@ -30,6 +30,8 @@ func CheckCNIAndCSI(ctx context.Context, cs *kubernetes.Clientset) ([]Issue, err
 						Namespace:      d.Namespace,
 						Name:           d.Name,
 						Severity:       SeverityCritical,
+						Category:       "networking",
+						Check:          "cni",
 						Summary:        fmt.Sprintf("CNI daemonset not healthy (%d/%d ready)", d.Status.NumberAvailable, d.Status.DesiredNumberScheduled),
 						Recommendation: "Check CNI pods in kube-system, image pull status, node taints/affinity, and host networking permissions.",
 					})
@@ -42,6 +44,8 @@ func CheckCNIAndCSI(ctx context.Context, cs *kubernetes.Clientset) ([]Issue, err
 						Namespace:      d.Namespace,
 						Name:           d.Name,
 						Severity:       SeverityWarning,
+						Category:       "storage",
+						Check:          "csi",
 						Summary:        fmt.Sprintf("CSI daemonset not healthy (%d/%d ready)", d.Status.NumberAvailable, d.Status.DesiredNumberScheduled),
 						Recommendation: "Inspect CSI node pods; verify hostPath mounts, permissions, and node selectors.",
 					})
@@ -54,6 +58,8 @@ func CheckCNIAndCSI(ctx context.Context, cs *kubernetes.Clientset) ([]Issue, err
 				Namespace:      metav1.NamespaceSystem,
 				Name:           "",
 				Severity:       SeverityWarning,
+				Category:       "networking",
+				Check:          "cni",
 				Summary:        "no known CNI daemonset detected",
 				Recommendation: "Ensure a CNI plugin is installed (Calico, Cilium, Flannel, etc.) and running in kube-system.",
 			})
@@ -66,6 +72,8 @@ func CheckCNIAndCSI(ctx context.Context, cs *kubernetes.Clientset) ([]Issue, err
 			issues = append(issues, Issue{
 				Kind:           "CSI",
 				Severity:       SeverityInfo,
+				Category:       "storage",
+				Check:          "csi-driver",
 				Summary:        "no CSI drivers registered",
 				Recommendation: "Install a CSI driver for your storage backend or verify API access to CSIDriver objects.",
 			})

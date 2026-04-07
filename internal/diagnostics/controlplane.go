@@ -38,6 +38,12 @@ func CheckControlPlane(ctx context.Context, cs *kubernetes.Clientset) ([]Issue, 
 	}
 	issues = append(issues, cmIssues...)
 
+	securityIssues, err := CheckControlPlaneSecurity(ctx, cs)
+	if err != nil {
+		return nil, err
+	}
+	issues = append(issues, securityIssues...)
+
 	return issues, nil
 }
 
@@ -57,6 +63,8 @@ func probeEtcd(ctx context.Context, cs *kubernetes.Clientset) *Issue {
 		return &Issue{
 			Kind:           "etcd",
 			Severity:       SeverityCritical,
+			Category:       "control-plane",
+			Check:          "etcd-livez",
 			Summary:        summary,
 			Recommendation: "Check etcd pods/endpoints, quorum, TLS certs, and network; inspect etcd logs and disk IO.",
 		}
@@ -66,6 +74,8 @@ func probeEtcd(ctx context.Context, cs *kubernetes.Clientset) *Issue {
 		return &Issue{
 			Kind:           "etcd",
 			Severity:       SeverityWarning,
+			Category:       "control-plane",
+			Check:          "etcd-latency",
 			Summary:        summary,
 			Recommendation: "Investigate etcd disk latency, network, and control-plane load; consider defragmentation and compaction policies.",
 		}
@@ -105,6 +115,8 @@ func probeEtcdSize(ctx context.Context, cs *kubernetes.Clientset) *Issue {
 		return &Issue{
 			Kind:           "etcd",
 			Severity:       SeverityWarning,
+			Category:       "control-plane",
+			Check:          "etcd-size",
 			Summary:        fmt.Sprintf("etcd DB size ~%.2fGiB", gb),
 			Recommendation: "Consider etcd defragmentation and review compaction/retention; ensure disk IO is healthy.",
 		}
@@ -112,6 +124,8 @@ func probeEtcdSize(ctx context.Context, cs *kubernetes.Clientset) *Issue {
 		return &Issue{
 			Kind:           "etcd",
 			Severity:       SeverityInfo,
+			Category:       "control-plane",
+			Check:          "etcd-size",
 			Summary:        fmt.Sprintf("etcd DB size ~%.2fGiB", gb),
 			Recommendation: "Monitor growth; schedule defrag during maintenance if size keeps increasing.",
 		}
@@ -134,6 +148,8 @@ func checkComponentPods(ctx context.Context, cs *kubernetes.Clientset, component
 			Namespace:      metav1.NamespaceSystem,
 			Name:           component,
 			Severity:       SeverityCritical,
+			Category:       "control-plane",
+			Check:          "controlplane-pods",
 			Summary:        fmt.Sprintf("no pods found for %s", component),
 			Recommendation: "Ensure control-plane static pods are running on master nodes; check kubelet and manifest files.",
 		})
@@ -149,6 +165,8 @@ func checkComponentPods(ctx context.Context, cs *kubernetes.Clientset, component
 				Namespace:      pod.Namespace,
 				Name:           pod.Name,
 				Severity:       SeverityCritical,
+				Category:       "control-plane",
+				Check:          "controlplane-pods",
 				Summary:        fmt.Sprintf("%s pod not Ready", component),
 				Recommendation: "Inspect pod logs and events for the control-plane component; check certs, flags, and host resources.",
 			})
@@ -246,6 +264,8 @@ func issueFromComponent(component string, sev Severity, summary, rec string) Iss
 		Namespace:      metav1.NamespaceSystem,
 		Name:           component,
 		Severity:       sev,
+		Category:       "control-plane",
+		Check:          "controlplane-metrics",
 		Summary:        summary,
 		Recommendation: rec,
 	}

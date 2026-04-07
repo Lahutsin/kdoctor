@@ -42,8 +42,34 @@ func CheckControllers(ctx context.Context, cs *kubernetes.Clientset, namespace s
 				Namespace:      d.Namespace,
 				Name:           d.Name,
 				Severity:       SeverityWarning,
+				Category:       "workloads",
+				Check:          "deployment-availability",
 				Summary:        summary,
 				Recommendation: "Check rollout status: kubectl rollout status deploy/NAME; describe pods for failures; verify image/tag and readiness probes.",
+			})
+		}
+		if desired == 0 {
+			issues = append(issues, Issue{
+				Kind:           "Deployment",
+				Namespace:      d.Namespace,
+				Name:           d.Name,
+				Severity:       SeverityInfo,
+				Category:       "workloads",
+				Check:          "deployment-scaled-zero",
+				Summary:        "deployment is scaled to zero replicas",
+				Recommendation: "Confirm this scale-down is intentional; otherwise increase replicas to restore service.",
+			})
+		}
+		if d.Spec.Paused {
+			issues = append(issues, Issue{
+				Kind:           "Deployment",
+				Namespace:      d.Namespace,
+				Name:           d.Name,
+				Severity:       SeverityInfo,
+				Category:       "workloads",
+				Check:          "deployment-paused",
+				Summary:        "deployment rollout is paused",
+				Recommendation: "Resume the rollout if this deployment is expected to reconcile normally.",
 			})
 		}
 	}
@@ -65,6 +91,8 @@ func CheckControllers(ctx context.Context, cs *kubernetes.Clientset, namespace s
 				Namespace:      ds.Namespace,
 				Name:           ds.Name,
 				Severity:       SeverityWarning,
+				Category:       "workloads",
+				Check:          "daemonset-availability",
 				Summary:        summary,
 				Recommendation: "Check daemonset pods: kubectl describe ds/NAME and affected pods; verify node selectors/taints and image pulls.",
 			})
@@ -90,8 +118,22 @@ func CheckControllers(ctx context.Context, cs *kubernetes.Clientset, namespace s
 				Namespace:      rs.Namespace,
 				Name:           rs.Name,
 				Severity:       SeverityInfo,
+				Category:       "workloads",
+				Check:          "replicaset-readiness",
 				Summary:        summary,
 				Recommendation: "Check owner deployment rollout and pod events; ensure pods schedule and containers start.",
+			})
+		}
+		if desired == 0 {
+			issues = append(issues, Issue{
+				Kind:           "ReplicaSet",
+				Namespace:      rs.Namespace,
+				Name:           rs.Name,
+				Severity:       SeverityInfo,
+				Category:       "workloads",
+				Check:          "replicaset-scaled-zero",
+				Summary:        "replicaset is scaled to zero replicas",
+				Recommendation: "Confirm the owning controller intended this scale-down.",
 			})
 		}
 	}
@@ -107,6 +149,8 @@ func CheckControllers(ctx context.Context, cs *kubernetes.Clientset, namespace s
 				Namespace:      job.Namespace,
 				Name:           job.Name,
 				Severity:       SeverityCritical,
+				Category:       "workloads",
+				Check:          "job-failed",
 				Summary:        "job failed",
 				Recommendation: "Inspect job pods: kubectl logs job/NAME; check backoffLimit, image, and command/args.",
 			})
@@ -118,6 +162,8 @@ func CheckControllers(ctx context.Context, cs *kubernetes.Clientset, namespace s
 				Namespace:      job.Namespace,
 				Name:           job.Name,
 				Severity:       SeverityWarning,
+				Category:       "workloads",
+				Check:          "job-failures",
 				Summary:        fmt.Sprintf("job failures recorded (%d failed pods)", job.Status.Failed),
 				Recommendation: "Inspect failed pods: kubectl logs -p; verify resources and environment variables.",
 			})
@@ -155,6 +201,8 @@ func evaluateCronJobsV1(items []batchv1.CronJob) []Issue {
 				Namespace:      cj.Namespace,
 				Name:           cj.Name,
 				Severity:       SeverityInfo,
+				Category:       "workloads",
+				Check:          "cronjob-suspended",
 				Summary:        "cronjob is suspended",
 				Recommendation: "Unsuspend to resume schedules: kubectl patch cronjob NAME -p '{\"spec\": {\"suspend\": false}}'",
 			})
@@ -167,6 +215,8 @@ func evaluateCronJobsV1(items []batchv1.CronJob) []Issue {
 					Namespace:      cj.Namespace,
 					Name:           cj.Name,
 					Severity:       SeverityWarning,
+					Category:       "workloads",
+					Check:          "cronjob-success",
 					Summary:        "no successful cronjob runs observed",
 					Recommendation: "Inspect recent job pods for failures and check cron schedule syntax.",
 				})

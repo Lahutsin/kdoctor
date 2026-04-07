@@ -3,7 +3,9 @@ package diagnostics
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,6 +25,7 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 	}
 
 	issues := make([]Issue, 0)
+	registryHosts := map[string]struct{}{}
 
 	for _, pod := range pods.Items {
 		// Pending with scheduling problems.
@@ -35,6 +38,8 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 					Namespace:      pod.Namespace,
 					Name:           pod.Name,
 					Severity:       SeverityWarning,
+					Category:       "workloads",
+					Check:          "pod-scheduling",
 					Summary:        summary,
 					Recommendation: advice,
 				})
@@ -42,6 +47,39 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 		}
 
 		// Container-level states.
+		for _, containerSpec := range pod.Spec.Containers {
+			if registryHost := imageRegistryHost(containerSpec.Image); registryHost != "" {
+				registryHosts[registryHost] = struct{}{}
+			}
+			if containerSpec.ImagePullPolicy == v1.PullAlways && strings.HasSuffix(containerSpec.Image, ":latest") {
+				issues = append(issues, Issue{
+					Kind:           "Pod",
+					Namespace:      pod.Namespace,
+					Name:           pod.Name,
+					Severity:       SeverityInfo,
+					Category:       "workloads",
+					Check:          "image-policy",
+					Summary:        fmt.Sprintf("container %s uses imagePullPolicy=Always with :latest", containerSpec.Name),
+					Recommendation: "Pin image tags to immutable versions to reduce rollout drift and unnecessary registry pulls.",
+				})
+			}
+		}
+
+		for _, secretRef := range pod.Spec.ImagePullSecrets {
+			if _, err := cs.CoreV1().Secrets(pod.Namespace).Get(ctx, secretRef.Name, metav1.GetOptions{}); err != nil {
+				issues = append(issues, Issue{
+					Kind:           "Pod",
+					Namespace:      pod.Namespace,
+					Name:           pod.Name,
+					Severity:       SeverityWarning,
+					Category:       "workloads",
+					Check:          "image-pull-secret",
+					Summary:        fmt.Sprintf("imagePullSecret %s is missing or unreadable", secretRef.Name),
+					Recommendation: "Restore the referenced secret or update the pod spec/service account to a valid imagePullSecret.",
+				})
+			}
+		}
+
 		for _, cs := range pod.Status.ContainerStatuses {
 			waiting := cs.State.Waiting
 			terminated := cs.LastTerminationState.Terminated
@@ -53,6 +91,8 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 					Namespace:      pod.Namespace,
 					Name:           pod.Name,
 					Severity:       SeverityCritical,
+					Category:       "workloads",
+					Check:          "image-pull",
 					Summary:        fmt.Sprintf("image pull failure for container %s: %s", cs.Name, waiting.Reason),
 					Recommendation: "Verify image name/tag, registry credentials (imagePullSecrets), and network reachability to the registry.",
 					References:     []string{"https://kubernetes.io/docs/concepts/containers/images/#using-a-private-registry"},
@@ -63,6 +103,8 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 					Namespace:      pod.Namespace,
 					Name:           pod.Name,
 					Severity:       SeverityCritical,
+					Category:       "workloads",
+					Check:          "crashloop",
 					Summary:        fmt.Sprintf("container %s is crash looping", cs.Name),
 					Recommendation: "Inspect recent logs: kubectl logs -p <pod> -c <container>. Check configuration, env vars, and readiness probes.",
 				})
@@ -72,6 +114,8 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 					Namespace:      pod.Namespace,
 					Name:           pod.Name,
 					Severity:       SeverityWarning,
+					Category:       "workloads",
+					Check:          "oomkilled",
 					Summary:        fmt.Sprintf("container %s was OOMKilled", cs.Name),
 					Recommendation: "Increase memory requests/limits, optimize memory usage, or reduce workload concurrency.",
 					References:     []string{"https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"},
@@ -82,6 +126,8 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 					Namespace:      pod.Namespace,
 					Name:           pod.Name,
 					Severity:       SeverityWarning,
+					Category:       "workloads",
+					Check:          "config-error",
 					Summary:        fmt.Sprintf("container %s failed to start due to config error", cs.Name),
 					Recommendation: "Check volumes, secrets, and configmaps referenced by the pod; validate securityContext and field references.",
 				})
@@ -93,6 +139,8 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 					Namespace:      pod.Namespace,
 					Name:           pod.Name,
 					Severity:       SeverityInfo,
+					Category:       "workloads",
+					Check:          "restarts",
 					Summary:        fmt.Sprintf("container %s restarted %d times", cs.Name, cs.RestartCount),
 					Recommendation: "Investigate container logs and readiness probes; consider increasing liveness thresholds.",
 				})
@@ -100,7 +148,43 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 		}
 	}
 
+	for registryHost := range registryHosts {
+		conn, err := net.DialTimeout("tcp", registryHost, 2*time.Second)
+		if err != nil {
+			issues = append(issues, Issue{
+				Kind:           "Pod",
+				Name:           registryHost,
+				Severity:       SeverityWarning,
+				Category:       "workloads",
+				Check:          "registry-reachability",
+				Summary:        fmt.Sprintf("registry endpoint %s is not reachable from the diagnostic host", registryHost),
+				Recommendation: "Verify outbound network access, registry DNS, VPN/proxy settings, and whether the cluster uses a private registry endpoint.",
+			})
+			continue
+		}
+		_ = conn.Close()
+	}
+
 	return issues, nil
+}
+
+func imageRegistryHost(image string) string {
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return ""
+	}
+	parts := strings.Split(image, "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	host := parts[0]
+	if !strings.Contains(host, ".") && !strings.Contains(host, ":") && host != "localhost" {
+		return "registry-1.docker.io:443"
+	}
+	if !strings.Contains(host, ":") {
+		return host + ":443"
+	}
+	return host
 }
 
 func isImagePull(reason string) bool {

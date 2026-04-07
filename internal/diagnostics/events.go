@@ -46,6 +46,7 @@ func CheckWarningEvents(ctx context.Context, cs *kubernetes.Clientset, namespace
 			Namespace:      nsForObj,
 			Name:           name,
 			Severity:       SeverityInfo,
+			Check:          "events",
 			Summary:        fmt.Sprintf("recent warning event: %s - %s", ev.Reason, ev.Message),
 			Recommendation: recommendation,
 		})
