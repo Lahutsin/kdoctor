@@ -1,6 +1,6 @@
 # kdoctor
 
-Version: 0.0.2.2-beta
+Version: 0.0.2.3-beta
 
 Minimal Kubernetes troubleshooter written in Go. It connects to your cluster, runs a bundle of quick health checks, and prints a compact table of findings with recommendations.
 
