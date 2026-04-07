@@ -43,13 +43,47 @@ It also supports an incident-focused view, service-chain inspection, node-pool d
 - Autoscaling: HPA condition failures, missing metrics, and stalled scaling
 - PDBs: disruption exhaustion, empty selectors, and overlapping selectors
 
-## Usage
-```bash
-go run ./cmd/kdoctor \
-  --kubeconfig ~/.kube/config \
-  --context my-cluster \
-  --namespace default
-```
+## Quick Start
+
+### Build And Run
+
+| Command | Description |
+|---|---|
+| `go run ./cmd/kdoctor --kubeconfig ~/.kube/config --context my-cluster --namespace default` | Run `kdoctor` directly from source against one namespace. |
+| `go build -o bin/kdoctor ./cmd/kdoctor` | Build the binary into `./bin/kdoctor`. |
+| `./bin/kdoctor --kubeconfig ~/.kube/config --context my-cluster` | Run the compiled binary against the selected cluster context. |
+| `./bin/kdoctor --help` | Show all supported flags and defaults. |
+
+### Development Commands
+
+| Command | Description |
+|---|---|
+| `go test ./...` | Run the full test suite for the repository. |
+| `go test ./... -coverprofile=cover.out` | Run all tests and write a coverage profile to `cover.out`. |
+| `go tool cover -func=cover.out` | Print coverage by function and the total statement coverage. |
+| `go tool cover -html=cover.out` | Open an HTML coverage report for local inspection. |
+| `go mod tidy` | Sync and clean module dependencies. |
+
+### Common Run Examples
+
+| Command | Description |
+|---|---|
+| `go run ./cmd/kdoctor --checks pods,nodes` | Run only pod and node diagnostics. |
+| `go run ./cmd/kdoctor --timeout 60` | Increase the total timeout for larger clusters. |
+| `go run ./cmd/kdoctor --output json --fail-on warning` | Emit machine-readable JSON and exit non-zero on warning or worse. |
+| `go run ./cmd/kdoctor --write-baseline .kdoctor-baseline.json` | Save the current scan as a reusable baseline snapshot. |
+| `go run ./cmd/kdoctor --baseline .kdoctor-baseline.json` | Compare the current scan against a saved baseline. |
+| `go run ./cmd/kdoctor --mode incident` | Run the incident-oriented view for active triage. |
+| `go run ./cmd/kdoctor --mode explain --focus-kind namespace --focus payments` | Explain grouped findings for one namespace. |
+| `go run ./cmd/kdoctor --mode dependencies --focus-kind app --focus api` | Trace dependencies for one application. |
+| `go run ./cmd/kdoctor --mode service-view --focus-kind service --focus api` | Inspect one service chain from ingress to backing workloads. |
+| `go run ./cmd/kdoctor --mode node-pool-view` | Summarize findings by node pool. |
+| `go run ./cmd/kdoctor --mode release-readiness --focus-kind namespace --focus prod` | Check release-readiness conditions for a production namespace. |
+| `go run ./cmd/kdoctor --mode multi-cluster-compare --context prod-eu --compare-context prod-us` | Compare findings between two kubeconfig contexts. |
+| `go run ./cmd/kdoctor --mode slo --focus-kind namespace --focus payments` | Show SLO-oriented risk analysis for one namespace. |
+| `go run ./cmd/kdoctor --mode full --report kdoctor.html --report-format html` | Generate a full HTML report. |
+| `go run ./cmd/kdoctor --profile pre-upgrade` | Run the pre-upgrade advisory profile. |
+| `go run ./cmd/kdoctor --profile ci --rules ./kdoctor-rules.yaml` | Run the CI profile with custom rule overrides. |
 
 ## Analysis Modes
 - `scan`: standard health summary plus issue table
@@ -72,26 +106,28 @@ go run ./cmd/kdoctor \
 - `full`: render all analysis sections together
 
 ## Flags
-- `--kubeconfig` (string): path to kubeconfig; defaults to `$KUBECONFIG` or `~/.kube/config`
-- `--context` (string): kubeconfig context to use
-- `--namespace` (string): limit checks to a namespace (empty scans all namespaces)
-- `--checks` (string): comma-separated checks to run; defaults to `pods,runtimebehavior,podsecurity,secrets,configexposure,networksecurity,storagesecurity,multitenancy,managedk8s,observability,policy,nodes,events,controllers,apiserver,rbac,serviceaccounts,webhooks,cni,controlplane,dns,storage,certificates,quotas,ingress,autoscaling,pdb,scheduling,trends`
-- `--timeout` (int): overall timeout in seconds for all checks (default 30)
-- `--output` (string): `table` or `json` output (default `table`)
-- `--mode` (string): analysis mode to render; defaults to `scan`
-- `--focus-kind` (string): `namespace`, `app`, `node`, `service`, or `node-pool`
-- `--focus` (string): the focus value used to filter issues and narrow path/dependency views
-- `--profile` (string): preset bundles such as `quick`, `prod`, `pre-upgrade`, `network`, `storage`, `admission`, `cost`, `ci`
-- `--fail-on` (string): exit with code `2` if any issue reaches `info`, `warning`, or `critical`
-- `--baseline` (string): path to a saved JSON scan for diffing new vs resolved findings
-- `--write-baseline` (string): path to write the current scan as a reusable JSON baseline
-- `--timeline-limit` (int): max number of timeline events to return
-- `--rules` (string): path to a YAML/JSON rules file for suppression, severity overrides, and recommendation augmentation
-- `--suppress-noise` (bool): suppress built-in non-actionable informational findings such as intentional scaled-zero workloads
-- `--compare-context` (string): second kubeconfig context used by `multi-cluster-compare`
-- `--compare-kubeconfig` (string): optional kubeconfig path for the comparison context
-- `--report` (string): output path for a rendered markdown/html report
-- `--report-format` (string): `markdown` or `html` report output
+| Flag | Description |
+|---|---|
+| `--kubeconfig` | Path to kubeconfig. Defaults to `$KUBECONFIG` or `~/.kube/config`. |
+| `--context` | Kubeconfig context to use. |
+| `--namespace` | Limit checks to one namespace. Empty means all namespaces. |
+| `--checks` | Comma-separated checks to run. Default: `pods,runtimebehavior,podsecurity,secrets,configexposure,networksecurity,storagesecurity,multitenancy,managedk8s,observability,policy,nodes,events,controllers,apiserver,rbac,serviceaccounts,webhooks,cni,controlplane,dns,storage,certificates,quotas,ingress,autoscaling,pdb,scheduling,trends`. |
+| `--timeout` | Overall timeout in seconds for all checks. Default: `30`. |
+| `--output` | Output format: `table` or `json`. Default: `table`. |
+| `--mode` | Analysis mode to render. Default: `scan`. |
+| `--focus-kind` | Focus type: `namespace`, `app`, `node`, `service`, or `node-pool`. |
+| `--focus` | Focus value used to narrow findings and analysis views. |
+| `--profile` | Preset bundle such as `quick`, `prod`, `pre-upgrade`, `network`, `storage`, `admission`, `cost`, or `ci`. |
+| `--fail-on` | Exit with code `2` if any finding reaches `info`, `warning`, or `critical`. |
+| `--baseline` | Path to a saved JSON baseline used for diff mode. |
+| `--write-baseline` | Path to write the current scan as a new baseline. |
+| `--timeline-limit` | Maximum number of timeline entries to include. |
+| `--rules` | Path to a YAML or JSON rules file for suppression and severity overrides. |
+| `--suppress-noise` | Suppress built-in low-signal informational findings. |
+| `--compare-context` | Secondary kubeconfig context for `multi-cluster-compare`. |
+| `--compare-kubeconfig` | Optional kubeconfig file for the comparison context. |
+| `--report` | Output path for a generated report. |
+| `--report-format` | Report format: `markdown` or `html`. |
 
 ## Profiles
 - `quick`: fast triage with pods, nodes, events, and apiserver only
@@ -121,23 +157,6 @@ rules:
     setSeverity: critical
     addRecommendation: "Treat quota pressure in prod as release-blocking."
 ```
-
-Examples:
-- Run only pod and node checks: `go run ./cmd/kdoctor --checks pods,nodes`
-- Extend the timeout for large clusters: `go run ./cmd/kdoctor --timeout 60`
-- Emit machine-readable output for CI: `go run ./cmd/kdoctor --output json --fail-on warning`
-- Save a baseline and compare later: `go run ./cmd/kdoctor --write-baseline .kdoctor-baseline.json` then `go run ./cmd/kdoctor --baseline .kdoctor-baseline.json`
-- Run incident mode during an outage: `go run ./cmd/kdoctor --mode incident`
-- Explain grouped findings for a namespace: `go run ./cmd/kdoctor --mode explain --focus-kind namespace --focus payments`
-- Trace dependencies for an app: `go run ./cmd/kdoctor --mode dependencies --focus-kind app --focus api`
-- Inspect one service chain: `go run ./cmd/kdoctor --mode service-view --focus-kind service --focus api`
-- Inspect node pools: `go run ./cmd/kdoctor --mode node-pool-view`
-- Run deployment readiness checks: `go run ./cmd/kdoctor --mode release-readiness --focus-kind namespace --focus prod`
-- Compare two contexts: `go run ./cmd/kdoctor --mode multi-cluster-compare --context prod-eu --compare-context prod-us`
-- Show SLO-oriented service risks: `go run ./cmd/kdoctor --mode slo --focus-kind namespace --focus payments`
-- Render a full HTML report: `go run ./cmd/kdoctor --mode full --report kdoctor.html --report-format html`
-- Run a pre-upgrade audit: `go run ./cmd/kdoctor --profile pre-upgrade`
-- Apply custom rules during a CI scan: `go run ./cmd/kdoctor --profile ci --rules ./kdoctor-rules.yaml`
 
 ## Output
 - Results are printed as a table with severity, object, summary, and recommendation. Additional references show on the next indented line when present.
