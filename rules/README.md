@@ -1,6 +1,6 @@
 # Rules Examples
 
-This directory contains example rule files for every rule capability currently supported by `kdoctor`.
+This directory contains example rule files for every rule capability currently supported by `k8doc`.
 
 Supported match fields:
 - `category`
@@ -27,6 +27,6 @@ Behavior notes:
 Example usage:
 
 ```bash
-./dist/kdoctor --rules ./rules/01-all-match-fields.yaml
-./dist/kdoctor --rules ./rules/06-json-rules.json --output json
+./dist/k8doc --rules ./rules/01-all-match-fields.yaml
+./dist/k8doc --rules ./rules/06-json-rules.json --output json
 ```

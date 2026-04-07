@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"kdoctor/internal/diagnostics"
+	"k8doc/internal/diagnostics"
 )
 
 func captureStdout(t *testing.T, fn func()) string {
@@ -444,7 +444,7 @@ func TestRenderMarkdownAndHTMLReport(t *testing.T) {
 
 	markdown := renderMarkdownReport(report)
 	for _, expected := range []string{
-		"# kdoctor report",
+		"# k8doc report",
 		"Generated: 2026-04-07T12:00:00Z",
 		"Focus: namespace=prod",
 		"## Explain",
@@ -470,7 +470,7 @@ func TestRenderMarkdownAndHTMLReport(t *testing.T) {
 	}
 
 	htmlReport := renderHTMLReport(report)
-	for _, expected := range []string{"<!doctype html>", "<pre>", "# kdoctor report"} {
+	for _, expected := range []string{"<!doctype html>", "<pre>", "# k8doc report"} {
 		if !strings.Contains(htmlReport, expected) {
 			t.Fatalf("expected html report to contain %q", expected)
 		}
@@ -591,7 +591,7 @@ func TestMainExitsForInvalidKubeconfig(t *testing.T) {
 
 		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 		os.Args = []string{
-			"kdoctor",
+			"k8doc",
 			"-kubeconfig", "/definitely/missing/kubeconfig",
 			"-profile", "quick",
 			"-focus-kind", "namespace",

@@ -1,10 +1,10 @@
-# kdoctor
+# k8doc
 
-Version: 0.0.2.3-beta
+Version: 0.0.2.4-beta
 
 Minimal Kubernetes troubleshooter written in Go. It connects to your cluster, runs a bundle of quick health checks, and prints a compact table of findings with recommendations.
 
-Beyond the base scan, `kdoctor` can now explain grouped findings, diff against a baseline, build event timelines, focus on a namespace/app/node, trace dependency paths, evaluate upgrade/security/cost posture, apply custom rules, and emit shareable reports.
+Beyond the base scan, `k8doc` can now explain grouped findings, diff against a baseline, build event timelines, focus on a namespace/app/node, trace dependency paths, evaluate upgrade/security/cost posture, apply custom rules, and emit shareable reports.
 
 It also supports an incident-focused view, service-chain inspection, node-pool diagnostics, release readiness checks, SLO risk estimation with blast radius hints, built-in noise suppression, and multi-cluster comparison across kubeconfig contexts.
 
@@ -49,10 +49,10 @@ It also supports an incident-focused view, service-chain inspection, node-pool d
 
 | Command | Description |
 |---|---|
-| `go run ./cmd/kdoctor --kubeconfig ~/.kube/config --context my-cluster --namespace default` | Run `kdoctor` directly from source against one namespace. |
-| `go build -o bin/kdoctor ./cmd/kdoctor` | Build the binary into `./bin/kdoctor`. |
-| `./bin/kdoctor --kubeconfig ~/.kube/config --context my-cluster` | Run the compiled binary against the selected cluster context. |
-| `./bin/kdoctor --help` | Show all supported flags and defaults. |
+| `go run ./cmd/k8doc --kubeconfig ~/.kube/config --context my-cluster --namespace default` | Run `k8doc` directly from source against one namespace. |
+| `go build -o bin/k8doc ./cmd/k8doc` | Build the binary into `./bin/k8doc`. |
+| `./bin/k8doc --kubeconfig ~/.kube/config --context my-cluster` | Run the compiled binary against the selected cluster context. |
+| `./bin/k8doc --help` | Show all supported flags and defaults. |
 
 ### Development Commands
 
@@ -68,22 +68,22 @@ It also supports an incident-focused view, service-chain inspection, node-pool d
 
 | Command | Description |
 |---|---|
-| `go run ./cmd/kdoctor --checks pods,nodes` | Run only pod and node diagnostics. |
-| `go run ./cmd/kdoctor --timeout 60` | Increase the total timeout for larger clusters. |
-| `go run ./cmd/kdoctor --output json --fail-on warning` | Emit machine-readable JSON and exit non-zero on warning or worse. |
-| `go run ./cmd/kdoctor --write-baseline .kdoctor-baseline.json` | Save the current scan as a reusable baseline snapshot. |
-| `go run ./cmd/kdoctor --baseline .kdoctor-baseline.json` | Compare the current scan against a saved baseline. |
-| `go run ./cmd/kdoctor --mode incident` | Run the incident-oriented view for active triage. |
-| `go run ./cmd/kdoctor --mode explain --focus-kind namespace --focus payments` | Explain grouped findings for one namespace. |
-| `go run ./cmd/kdoctor --mode dependencies --focus-kind app --focus api` | Trace dependencies for one application. |
-| `go run ./cmd/kdoctor --mode service-view --focus-kind service --focus api` | Inspect one service chain from ingress to backing workloads. |
-| `go run ./cmd/kdoctor --mode node-pool-view` | Summarize findings by node pool. |
-| `go run ./cmd/kdoctor --mode release-readiness --focus-kind namespace --focus prod` | Check release-readiness conditions for a production namespace. |
-| `go run ./cmd/kdoctor --mode multi-cluster-compare --context prod-eu --compare-context prod-us` | Compare findings between two kubeconfig contexts. |
-| `go run ./cmd/kdoctor --mode slo --focus-kind namespace --focus payments` | Show SLO-oriented risk analysis for one namespace. |
-| `go run ./cmd/kdoctor --mode full --report kdoctor.html --report-format html` | Generate a full HTML report. |
-| `go run ./cmd/kdoctor --profile pre-upgrade` | Run the pre-upgrade advisory profile. |
-| `go run ./cmd/kdoctor --profile ci --rules ./kdoctor-rules.yaml` | Run the CI profile with custom rule overrides. |
+| `./bin/k8doc --checks pods,nodes` | Run only pod and node diagnostics. |
+| `./bin/k8doc --timeout 60` | Increase the total timeout for larger clusters. |
+| `./bin/k8doc --output json --fail-on warning` | Emit machine-readable JSON and exit non-zero on warning or worse. |
+| `./bin/k8doc --write-baseline .k8doc-baseline.json` | Save the current scan as a reusable baseline snapshot. |
+| `./bin/k8doc --baseline .k8doc-baseline.json` | Compare the current scan against a saved baseline. |
+| `./bin/k8doc --mode incident` | Run the incident-oriented view for active triage. |
+| `./bin/k8doc --mode explain --focus-kind namespace --focus payments` | Explain grouped findings for one namespace. |
+| `./bin/k8doc --mode dependencies --focus-kind app --focus api` | Trace dependencies for one application. |
+| `./bin/k8doc --mode service-view --focus-kind service --focus api` | Inspect one service chain from ingress to backing workloads. |
+| `./bin/k8doc --mode node-pool-view` | Summarize findings by node pool. |
+| `./bin/k8doc --mode release-readiness --focus-kind namespace --focus prod` | Check release-readiness conditions for a production namespace. |
+| `./bin/k8doc --mode multi-cluster-compare --context prod-eu --compare-context prod-us` | Compare findings between two kubeconfig contexts. |
+| `./bin/k8doc --mode slo --focus-kind namespace --focus payments` | Show SLO-oriented risk analysis for one namespace. |
+| `./bin/k8doc --mode full --report k8doc.html --report-format html` | Generate a full HTML report. |
+| `./bin/k8doc --profile pre-upgrade` | Run the pre-upgrade advisory profile. |
+| `./bin/k8doc --profile ci --rules ./k8doc-rules.yaml` | Run the CI profile with custom rule overrides. |
 
 ## Analysis Modes
 - `scan`: standard health summary plus issue table
@@ -167,5 +167,5 @@ rules:
 
 ## Notes
 - Requires Go and network access to the Kubernetes API. Run `go mod tidy` once to download dependencies.
-- Some reachability probes, such as registry and ingress TLS checks, are executed from the host running `kdoctor`, not from inside the cluster network.
+- Some reachability probes, such as registry and ingress TLS checks, are executed from the host running `k8doc`, not from inside the cluster network.
 - If no issues are found, the tool reports a healthy cluster based on the inspected signals.

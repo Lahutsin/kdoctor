@@ -12,7 +12,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"kdoctor/internal/diagnostics"
+	"k8doc/internal/diagnostics"
 )
 
 func main() {
@@ -774,7 +774,7 @@ func writeRenderedReport(path, format string, report scanReport) error {
 
 func renderMarkdownReport(report scanReport) string {
 	var builder strings.Builder
-	builder.WriteString("# kdoctor report\n\n")
+	builder.WriteString("# k8doc report\n\n")
 	builder.WriteString(fmt.Sprintf("Generated: %s\n\n", report.GeneratedAt.Format(time.RFC3339)))
 	builder.WriteString(fmt.Sprintf("Health score: %d/100\n\n", report.Summary.Score))
 	if report.Options.Focus.Value != "" {
@@ -826,7 +826,7 @@ func renderMarkdownReport(report scanReport) string {
 
 func renderHTMLReport(report scanReport) string {
 	markdown := renderMarkdownReport(report)
-	return "<!doctype html><html><head><meta charset=\"utf-8\"><title>kdoctor report</title><style>body{font-family:ui-monospace,Menlo,monospace;max-width:960px;margin:40px auto;padding:0 24px;line-height:1.5}pre{background:#f6f8fa;padding:12px;overflow:auto}code{font-family:inherit}</style></head><body><pre>" + html.EscapeString(markdown) + "</pre></body></html>"
+	return "<!doctype html><html><head><meta charset=\"utf-8\"><title>k8doc report</title><style>body{font-family:ui-monospace,Menlo,monospace;max-width:960px;margin:40px auto;padding:0 24px;line-height:1.5}pre{background:#f6f8fa;padding:12px;overflow:auto}code{font-family:inherit}</style></head><body><pre>" + html.EscapeString(markdown) + "</pre></body></html>"
 }
 
 func writeEdgesMarkdown(builder *strings.Builder, title string, edges []diagnostics.DependencyEdge) {

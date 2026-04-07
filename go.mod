@@ -1,4 +1,4 @@
-module kdoctor
+module k8doc
 
 go 1.22.0
 
