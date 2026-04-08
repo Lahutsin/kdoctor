@@ -1,6 +1,6 @@
 # k8doc
 
-Version: 0.0.2.4-beta
+Version: 0.0.2.5-beta
 
 Minimal Kubernetes troubleshooter written in Go. It connects to your cluster, runs a bundle of quick health checks, and prints a compact table of findings with recommendations.
 
@@ -10,6 +10,7 @@ It also supports an incident-focused view, service-chain inspection, node-pool d
 
 ## Checks
 - Pods: scheduling failures, image pull errors, crash loops, OOM kills, repeated restarts
+- GPU and accelerators: missing `nvidia.com/gpu` or `nvidia.com/mig-*` inventory on GPU-marked nodes, capacity vs allocatable mismatches, missing NVIDIA device plugin or unavailable GPU Operator daemonsets, GPU pod `requests`/`limits` mistakes, taint/toleration and affinity mismatches, scheduler events such as `Insufficient nvidia.com/gpu`, driver/CUDA/runtime mismatch signals, missing DCGM-style observability, and MIG/time-slicing or shared-GPU profile mismatches
 - Runtime and behavioral: suspicious restart patterns, recent exec/debug activity, ephemeral containers, newly launched privileged pods, crypto-mining or suspicious outbound markers, unusual listening ports, namespace pod churn, unexpected service account token mounts, unusual CronJobs, and unexpected cluster-wide DaemonSets
 - Pod security: privileged containers, privilege escalation, root execution, missing `runAsNonRoot`, host namespace sharing, hostPath volumes, dangerous capabilities, missing capability drops, seccomp/AppArmor/SELinux gaps, writable root filesystems, unsafe proc mounts/sysctls, runtime socket mounts, ephemeral debug containers, and Pod Security Admission namespace drift/violations
 - Secrets: encryption at rest coverage, TLS secret age and expiry hygiene, secret rotation cadence, unused or over-shared secrets, secret-in-env exposure, ConfigMap credential leaks, weak certificate crypto, stale docker registry credentials, and plain cloud credentials without rotation metadata
@@ -69,6 +70,7 @@ It also supports an incident-focused view, service-chain inspection, node-pool d
 | Command | Description |
 |---|---|
 | `./bin/k8doc --checks pods,nodes` | Run only pod and node diagnostics. |
+| `./bin/k8doc --checks gpu,pods,nodes --mode incident` | Triage GPU or AI-node placement, plugin, and runtime issues together with core pod/node health. |
 | `./bin/k8doc --timeout 60` | Increase the total timeout for larger clusters. |
 | `./bin/k8doc --output json --fail-on warning` | Emit machine-readable JSON and exit non-zero on warning or worse. |
 | `./bin/k8doc --write-baseline .k8doc-baseline.json` | Save the current scan as a reusable baseline snapshot. |
@@ -111,7 +113,7 @@ It also supports an incident-focused view, service-chain inspection, node-pool d
 | `--kubeconfig` | Path to kubeconfig. Defaults to `$KUBECONFIG` or `~/.kube/config`. |
 | `--context` | Kubeconfig context to use. |
 | `--namespace` | Limit checks to one namespace. Empty means all namespaces. |
-| `--checks` | Comma-separated checks to run. Default: `pods,runtimebehavior,podsecurity,secrets,configexposure,networksecurity,storagesecurity,multitenancy,managedk8s,observability,policy,nodes,events,controllers,apiserver,rbac,serviceaccounts,webhooks,cni,controlplane,dns,storage,certificates,quotas,ingress,autoscaling,pdb,scheduling,trends`. |
+| `--checks` | Comma-separated checks to run. Default: `pods,gpu,runtimebehavior,podsecurity,secrets,configexposure,networksecurity,storagesecurity,multitenancy,managedk8s,observability,policy,nodes,events,controllers,apiserver,rbac,serviceaccounts,webhooks,cni,controlplane,dns,storage,certificates,quotas,ingress,autoscaling,pdb,scheduling,trends`. |
 | `--timeout` | Overall timeout in seconds for all checks. Default: `30`. |
 | `--output` | Output format: `table` or `json`. Default: `table`. |
 | `--mode` | Analysis mode to render. Default: `scan`. |
@@ -133,13 +135,18 @@ It also supports an incident-focused view, service-chain inspection, node-pool d
 - `quick`: fast triage with pods, nodes, events, and apiserver only
 - `prod`: full scan with `--fail-on critical`
 - `pre-upgrade`: full scan rendered as upgrade readiness advice
-- `incident`: critical-path checks rendered as incident mode with `--fail-on warning`
+- `incident`: critical-path checks including GPU diagnostics rendered as incident mode with `--fail-on warning`
 - `release`: deployment-focused checks rendered as release readiness advice
 - `network`: network-focused checks rendered as network path analysis
 - `storage`: storage-focused checks rendered as storage path analysis
 - `admission`: webhook/certificate/apiserver checks rendered as security posture
 - `cost`: cost-focused checks rendered as waste analysis
 - `ci`: full JSON report with `--fail-on warning`
+
+## GPU Notes
+- The built-in `gpu` check is aimed at modern Kubernetes clusters running AI or inference workloads on NVIDIA-backed nodes.
+- It inspects node inventory, DaemonSet/operator availability, pod GPU resource declarations, scheduler warning events, runtime mismatch signals, and basic observability coverage.
+- It understands both full GPU resources such as `nvidia.com/gpu` and MIG-style resources such as `nvidia.com/mig-*`.
 
 ## Rules
 Rules can be provided as YAML or JSON and are applied after the checks run. Each rule can match on category, check, kind, namespace, name, severity, or `summaryContains`, then suppress the issue or modify severity/recommendation metadata. Supported actions are `suppress`, `setSeverity`, `addRecommendation`, `addReference`, and `appendSummarySuffix`.

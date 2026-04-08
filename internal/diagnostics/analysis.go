@@ -595,7 +595,7 @@ func FilterIncidentIssues(issues []Issue) []Issue {
 			continue
 		}
 		switch issue.Check {
-		case "image-pull", "crashloop", "pod-scheduling", "nodes-ready", "node-memory-pressure", "node-disk-pressure", "node-network-unavailable", "apiserver", "dns", "dns-endpoints", "cni", "csi", "controlplane-pods", "etcd-livez", "ingress-loadbalancer", "ingress-backend-endpoints", "webhook-endpoints", "webhook-latency", "pvc-binding", "volume-attachment":
+		case "image-pull", "crashloop", "pod-scheduling", "nodes-ready", "node-memory-pressure", "node-disk-pressure", "node-network-unavailable", "apiserver", "dns", "dns-endpoints", "cni", "csi", "controlplane-pods", "etcd-livez", "ingress-loadbalancer", "ingress-backend-endpoints", "webhook-endpoints", "webhook-latency", "pvc-binding", "volume-attachment", "gpu-device-plugin-missing", "gpu-daemonset-unavailable", "gpu-runtime-mismatch", "gpu-scheduling-event", "gpu-profile-unavailable", "gpu-oversubscription-profile-mismatch":
 			filtered = append(filtered, issue)
 		}
 	}

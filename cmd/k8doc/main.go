@@ -346,7 +346,7 @@ func composeReport(ctx context.Context, checker *diagnostics.Checker, summary he
 }
 
 func defaultChecks() string {
-	return "pods,runtimebehavior,podsecurity,secrets,configexposure,networksecurity,storagesecurity,multitenancy,managedk8s,observability,policy,nodes,events,controllers,apiserver,rbac,serviceaccounts,webhooks,cni,controlplane,dns,storage,certificates,quotas,ingress,autoscaling,pdb,scheduling,trends"
+	return "pods,gpu,runtimebehavior,podsecurity,secrets,configexposure,networksecurity,storagesecurity,multitenancy,managedk8s,observability,policy,nodes,events,controllers,apiserver,rbac,serviceaccounts,webhooks,cni,controlplane,dns,storage,certificates,quotas,ingress,autoscaling,pdb,scheduling,trends"
 }
 
 func applyProfile(checks, output, failOn, mode *string, profile string) {
@@ -365,7 +365,7 @@ func applyProfile(checks, output, failOn, mode *string, profile string) {
 		*checks = "nodes,dns,ingress,cni,webhooks,events,scheduling"
 		*mode = "network-path"
 	case "incident":
-		*checks = "pods,nodes,apiserver,controlplane,dns,cni,ingress,webhooks,storage,events"
+		*checks = "pods,gpu,nodes,apiserver,controlplane,dns,cni,ingress,webhooks,storage,events"
 		*mode = "incident"
 		if *failOn == "" {
 			*failOn = "warning"

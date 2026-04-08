@@ -72,6 +72,7 @@ func NewChecker(kubeconfigPath, kubeContext, namespace string, enabled map[strin
 	if len(enabled) == 0 {
 		enabled = map[string]bool{
 			"pods":            true,
+				"gpu":             true,
 			"runtimebehavior": true,
 			"podsecurity":     true,
 			"secrets":         true,
@@ -146,6 +147,16 @@ func (c *Checker) Run(ctx context.Context) ([]Issue, error) {
 				return fmt.Errorf("pods: %w", err)
 			}
 			add(podIssues)
+			return nil
+		})
+	}
+	if c.enabled["gpu"] {
+		eg.Go(func() error {
+			gpuIssues, err := CheckGPU(egCtx, c.clientset, c.dynamic, ns)
+			if err != nil {
+				return fmt.Errorf("gpu: %w", err)
+			}
+			add(gpuIssues)
 			return nil
 		})
 	}

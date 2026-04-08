@@ -181,7 +181,7 @@ func sampleReport() scanReport {
 
 func TestDefaultChecksAndParseChecks(t *testing.T) {
 	checks := defaultChecks()
-	for _, expected := range []string{"pods", "rbac", "trends"} {
+	for _, expected := range []string{"pods", "gpu", "rbac", "trends"} {
 		if !strings.Contains(checks, expected) {
 			t.Fatalf("default checks missing %q in %q", expected, checks)
 		}
@@ -214,7 +214,7 @@ func TestApplyProfile(t *testing.T) {
 		{name: "prod", profile: "prod", initialMode: "scan", initialOut: "table", wantChecks: defaultChecks(), wantMode: "scan", wantFail: "critical", wantOutput: "table"},
 		{name: "pre-upgrade", profile: "pre-upgrade", initialMode: "scan", initialOut: "table", wantChecks: defaultChecks(), wantMode: "upgrade-readiness", wantOutput: "table"},
 		{name: "network", profile: "network", initialMode: "scan", initialOut: "table", wantChecks: "nodes,dns,ingress,cni,webhooks,events,scheduling", wantMode: "network-path", wantOutput: "table"},
-		{name: "incident", profile: "incident", initialMode: "scan", initialOut: "table", wantChecks: "pods,nodes,apiserver,controlplane,dns,cni,ingress,webhooks,storage,events", wantMode: "incident", wantFail: "warning", wantOutput: "table"},
+		{name: "incident", profile: "incident", initialMode: "scan", initialOut: "table", wantChecks: "pods,gpu,nodes,apiserver,controlplane,dns,cni,ingress,webhooks,storage,events", wantMode: "incident", wantFail: "warning", wantOutput: "table"},
 		{name: "release", profile: "release", initialMode: "scan", initialOut: "table", wantChecks: "quotas,pdb,pods,webhooks,ingress,autoscaling,storage,events", wantMode: "release-readiness", wantOutput: "table"},
 		{name: "storage", profile: "storage", initialMode: "scan", initialOut: "table", wantChecks: "storage,pods,cni,events", wantMode: "storage-path", wantOutput: "table"},
 		{name: "admission", profile: "admission", initialMode: "scan", initialOut: "table", wantChecks: "webhooks,certificates,apiserver,events", wantMode: "security", wantOutput: "table"},

@@ -44,6 +44,7 @@ func TestCheckerRunWithManyEnabledChecks(t *testing.T) {
 		timeout:   2 * time.Second,
 		enabled: map[string]bool{
 			"pods":            true,
+			"gpu":             true,
 			"runtimebehavior": true,
 			"podsecurity":     true,
 			"secrets":         true,
@@ -120,7 +121,7 @@ func TestDefaultKubeconfigAndNewChecker(t *testing.T) {
 	if checker.namespace != "prod" || checker.timeout != 30*time.Second {
 		t.Fatalf("unexpected checker defaults: %+v", checker)
 	}
-	if !checker.enabled["pods"] || !checker.enabled["trends"] {
+	if !checker.enabled["pods"] || !checker.enabled["gpu"] || !checker.enabled["trends"] {
 		t.Fatalf("expected default checks to be enabled, got %+v", checker.enabled)
 	}
 }
