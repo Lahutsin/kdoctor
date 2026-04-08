@@ -24,7 +24,7 @@ func CheckObservabilityAndDetection(ctx context.Context, cs *kubernetes.Clientse
 		ns = metav1.NamespaceAll
 	}
 	if ns != metav1.NamespaceAll {
-		return nil, nil
+		return nil, NotApplicableError("observability check currently requires all-namespaces scope")
 	}
 	pods, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {

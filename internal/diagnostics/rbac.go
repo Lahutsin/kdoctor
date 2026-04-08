@@ -495,6 +495,7 @@ func dedupeIssues(issues []Issue) []Issue {
 	seen := map[string]struct{}{}
 	result := make([]Issue, 0, len(issues))
 	for _, issue := range issues {
+		issue = NormalizeIssue(issue)
 		key := issue.Key() + "|" + issue.Recommendation
 		if _, ok := seen[key]; ok {
 			continue

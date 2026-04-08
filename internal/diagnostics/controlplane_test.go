@@ -36,6 +36,7 @@ func TestControlPlaneHelpers(t *testing.T) {
 }
 
 func TestCheckControlPlane(t *testing.T) {
+	withProbePolicy(t, ProbePolicy{EnableActiveProbes: true, TargetClasses: map[string]bool{"controlplane": true}, TLSProbeMode: "handshake-only"})
 	ctx := context.Background()
 	cs := newHTTPBackedClientset(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

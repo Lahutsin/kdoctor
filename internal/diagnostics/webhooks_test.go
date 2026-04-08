@@ -13,6 +13,7 @@ import (
 )
 
 func TestWebhookHelpersAndCheckWebhooks(t *testing.T) {
+	withProbePolicy(t, ProbePolicy{EnableActiveProbes: true, TargetClasses: map[string]bool{"webhook": true}, TLSProbeMode: "handshake-only"})
 	expired := generateSelfSignedCertPEM(t, "webhook.prod.svc", time.Now().Add(-time.Hour))
 	service := corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "webhook", Namespace: "prod"}, Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeNodePort, Selector: map[string]string{"app": "webhook"}}}
 	pod := corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "webhook-pod", Namespace: "prod", Labels: map[string]string{"app": "webhook"}}, Spec: corev1.PodSpec{Volumes: []corev1.Volume{{Name: "tls", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "webhook-tls"}}}}}}

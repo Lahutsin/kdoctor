@@ -39,28 +39,28 @@ func CheckSecrets(ctx context.Context, cs *kubernetes.Clientset, namespace strin
 	if err != nil {
 		return nil, err
 	}
-	secrets, err := cs.CoreV1().Secrets(ns).List(ctx, metav1.ListOptions{})
+	secrets, err := listSecretsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
-	serviceAccounts, err := cs.CoreV1().ServiceAccounts(ns).List(ctx, metav1.ListOptions{})
+	serviceAccounts, err := listServiceAccountsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
-	pods, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+	pods, err := listPodsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
-	ingresses, err := cs.NetworkingV1().Ingresses(ns).List(ctx, metav1.ListOptions{})
+	ingresses, err := listIngressesCached(ctx, cs, ns)
 	if err != nil {
-		ingresses = &networkingv1.IngressList{}
+		ingresses = nil
 	}
 
 	issues := make([]Issue, 0)
 	issues = append(issues, checkSecretEncryptionAtRest(ctx, cs)...)
-	usage := collectSecretUsage(pods.Items, ingresses.Items, serviceAccounts.Items)
+	usage := collectSecretUsage(pods, ingresses, serviceAccounts)
 
-	for _, secret := range secrets.Items {
+	for _, secret := range secrets {
 		nsMeta := namespaces[secret.Namespace]
 		usageEntry := usage[secret.Namespace+"/"+secret.Name]
 		issues = append(issues, secretAgeAndRotationIssues(secret, nsMeta)...)

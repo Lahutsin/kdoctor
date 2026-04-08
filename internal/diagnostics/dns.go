@@ -72,32 +72,38 @@ func CheckDNS(ctx context.Context, cs *kubernetes.Clientset) ([]Issue, error) {
 			})
 		}
 
-		start := time.Now()
-		res := cs.CoreV1().RESTClient().Get().Namespace(svc.Namespace).Resource("services").Name(svc.Name).SubResource("proxy").Do(ctx)
-		_, probeErr := res.Raw()
-		latency := time.Since(start)
-		if probeErr != nil {
-			issues = append(issues, Issue{
-				Kind:           "DNS",
-				Namespace:      svc.Namespace,
-				Name:           svc.Name,
-				Severity:       SeverityWarning,
-				Category:       "networking",
-				Check:          "dns-probe",
-				Summary:        fmt.Sprintf("DNS service proxy probe failed: %v", probeErr),
-				Recommendation: "Verify kube-dns service, CoreDNS pod ports, and API proxy reachability.",
-			})
-		} else if latency > 1500*time.Millisecond {
-			issues = append(issues, Issue{
-				Kind:           "DNS",
-				Namespace:      svc.Namespace,
-				Name:           svc.Name,
-				Severity:       SeverityWarning,
-				Category:       "networking",
-				Check:          "dns-latency",
-				Summary:        fmt.Sprintf("DNS service proxy is slow (~%dms)", latency.Milliseconds()),
-				Recommendation: "Inspect CoreDNS load, upstream DNS latency, and cluster networking.",
-			})
+		if ActiveProbeEnabled("dns") {
+			start := time.Now()
+			res := cs.CoreV1().RESTClient().Get().Namespace(svc.Namespace).Resource("services").Name(svc.Name).SubResource("proxy").Do(ctx)
+			_, probeErr := res.Raw()
+			latency := time.Since(start)
+			if probeErr != nil {
+				issues = append(issues, Issue{
+					Kind:           "DNS",
+					Namespace:      svc.Namespace,
+					Name:           svc.Name,
+					Severity:       SeverityWarning,
+					Category:       "networking",
+					Check:          "dns-probe",
+					Detection:      "active-probe",
+					Confidence:     "medium",
+					Summary:        fmt.Sprintf("DNS service proxy probe failed: %v", probeErr),
+					Recommendation: "Verify kube-dns service, CoreDNS pod ports, and API proxy reachability.",
+				})
+			} else if latency > 1500*time.Millisecond {
+				issues = append(issues, Issue{
+					Kind:           "DNS",
+					Namespace:      svc.Namespace,
+					Name:           svc.Name,
+					Severity:       SeverityWarning,
+					Category:       "networking",
+					Check:          "dns-latency",
+					Detection:      "active-probe",
+					Confidence:     "medium",
+					Summary:        fmt.Sprintf("DNS service proxy is slow (~%dms)", latency.Milliseconds()),
+					Recommendation: "Inspect CoreDNS load, upstream DNS latency, and cluster networking.",
+				})
+			}
 		}
 	}
 

@@ -53,22 +53,22 @@ func CheckWebhooks(ctx context.Context, cs *kubernetes.Clientset) ([]Issue, erro
 
 	var issues []Issue
 
-	vcfgs, err := cs.AdmissionregistrationV1().ValidatingWebhookConfigurations().List(ctx, metav1.ListOptions{})
+	vcfgs, err := listValidatingWebhookConfigurationsCached(ctx, cs)
 	if err != nil && !errors.IsNotFound(err) {
 		return nil, err
 	}
 	if err == nil {
-		for _, cfg := range vcfgs.Items {
+		for _, cfg := range vcfgs {
 			issues = append(issues, evaluateValidatingWebhook(ctx, cs, inventory, cfg)...)
 		}
 	}
 
-	mcfgs, err := cs.AdmissionregistrationV1().MutatingWebhookConfigurations().List(ctx, metav1.ListOptions{})
+	mcfgs, err := listMutatingWebhookConfigurationsCached(ctx, cs)
 	if err != nil && !errors.IsNotFound(err) {
 		return nil, err
 	}
 	if err == nil {
-		for _, cfg := range mcfgs.Items {
+		for _, cfg := range mcfgs {
 			issues = append(issues, evaluateMutatingWebhook(ctx, cs, inventory, cfg)...)
 		}
 	}
@@ -81,41 +81,41 @@ func buildWebhookInventory(ctx context.Context, cs *kubernetes.Clientset) (webho
 	if err != nil {
 		return webhookInventory{}, err
 	}
-	services, err := cs.CoreV1().Services(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	services, err := listServicesCached(ctx, cs, metav1.NamespaceAll)
 	if err != nil {
 		return webhookInventory{}, err
 	}
-	endpoints, err := cs.CoreV1().Endpoints(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	endpoints, err := listEndpointsCached(ctx, cs, metav1.NamespaceAll)
 	if err != nil {
 		return webhookInventory{}, err
 	}
-	pods, err := cs.CoreV1().Pods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	pods, err := listPodsCached(ctx, cs, metav1.NamespaceAll)
 	if err != nil {
 		return webhookInventory{}, err
 	}
-	secrets, err := cs.CoreV1().Secrets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	secrets, err := listSecretsCached(ctx, cs, metav1.NamespaceAll)
 	if err != nil {
 		return webhookInventory{}, err
 	}
 
 	inventory := webhookInventory{
-		services:    make(map[string]corev1.Service, len(services.Items)),
-		endpoints:   make(map[string]*corev1.Endpoints, len(endpoints.Items)),
+		services:    make(map[string]corev1.Service, len(services)),
+		endpoints:   make(map[string]*corev1.Endpoints, len(endpoints)),
 		podsByNS:    make(map[string][]corev1.Pod),
 		secretsByNS: make(map[string][]corev1.Secret),
 		namespaces:  namespaces,
 	}
-	for _, service := range services.Items {
+	for _, service := range services {
 		inventory.services[service.Namespace+"/"+service.Name] = service
 	}
-	for _, endpoint := range endpoints.Items {
+	for _, endpoint := range endpoints {
 		ep := endpoint
 		inventory.endpoints[endpoint.Namespace+"/"+endpoint.Name] = &ep
 	}
-	for _, pod := range pods.Items {
+	for _, pod := range pods {
 		inventory.podsByNS[pod.Namespace] = append(inventory.podsByNS[pod.Namespace], pod)
 	}
-	for _, secret := range secrets.Items {
+	for _, secret := range secrets {
 		inventory.secretsByNS[secret.Namespace] = append(inventory.secretsByNS[secret.Namespace], secret)
 	}
 	return inventory, nil
@@ -674,6 +674,9 @@ func certificateMatchesAnyDNSName(cert *x509.Certificate, names []string) bool {
 
 // probeWebhookLatency issues lightweight GET and AdmissionReview POST probes via the service proxy.
 func probeWebhookLatency(ctx context.Context, cs *kubernetes.Clientset, ns, svc string) []Issue {
+	if !ActiveProbeEnabled("webhook") {
+		return nil
+	}
 	var issues []Issue
 
 	start := time.Now()
@@ -686,6 +689,8 @@ func probeWebhookLatency(ctx context.Context, cs *kubernetes.Clientset, ns, svc 
 			Severity:       SeverityWarning,
 			Category:       "security",
 			Check:          "webhook-probe",
+			Detection:      "active-probe",
+			Confidence:     "medium",
 			Summary:        fmt.Sprintf("webhook service %s/%s probe failed: %v", ns, svc, err),
 			Recommendation: "Check webhook pod readiness, network policy, and service endpoints.",
 		})
@@ -699,6 +704,8 @@ func probeWebhookLatency(ctx context.Context, cs *kubernetes.Clientset, ns, svc 
 			Severity:       SeverityWarning,
 			Category:       "security",
 			Check:          "webhook-latency",
+			Detection:      "active-probe",
+			Confidence:     "medium",
 			Summary:        fmt.Sprintf("webhook service %s/%s slow (~%dms)", ns, svc, latency.Milliseconds()),
 			Recommendation: "Investigate webhook handler performance and network path; consider lowering timeoutSeconds.",
 		})
@@ -719,6 +726,8 @@ func probeWebhookLatency(ctx context.Context, cs *kubernetes.Clientset, ns, svc 
 			Severity:       SeverityWarning,
 			Category:       "security",
 			Check:          "webhook-admission-probe",
+			Detection:      "active-probe",
+			Confidence:     "medium",
 			Summary:        fmt.Sprintf("admission probe to %s/%s failed: %v", ns, svc, err),
 			Recommendation: "Ensure webhook endpoint accepts admission reviews; verify TLS, service port, and readiness.",
 		})
@@ -730,6 +739,8 @@ func probeWebhookLatency(ctx context.Context, cs *kubernetes.Clientset, ns, svc 
 			Severity:       SeverityWarning,
 			Category:       "security",
 			Check:          "webhook-admission-latency",
+			Detection:      "active-probe",
+			Confidence:     "medium",
 			Summary:        fmt.Sprintf("admission probe to %s/%s slow (~%dms)", ns, svc, postLatency.Milliseconds()),
 			Recommendation: "Investigate webhook handler performance and network latency; consider lower timeoutSeconds.",
 		})

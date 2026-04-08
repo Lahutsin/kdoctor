@@ -43,9 +43,9 @@ func TestSecretHelpersAndCheckSecrets(t *testing.T) {
 	pod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "prod"},
 		Spec: corev1.PodSpec{
-			Volumes: []corev1.Volume{{Name: "secret", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "app-secret"}}}, {Name: "projected", VolumeSource: corev1.VolumeSource{Projected: &corev1.ProjectedVolumeSource{Sources: []corev1.VolumeProjection{{Secret: &corev1.SecretProjection{LocalObjectReference: corev1.LocalObjectReference{Name: "app-secret"}}}}}}}},
+			Volumes:          []corev1.Volume{{Name: "secret", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "app-secret"}}}, {Name: "projected", VolumeSource: corev1.VolumeSource{Projected: &corev1.ProjectedVolumeSource{Sources: []corev1.VolumeProjection{{Secret: &corev1.SecretProjection{LocalObjectReference: corev1.LocalObjectReference{Name: "app-secret"}}}}}}}},
 			ImagePullSecrets: []corev1.LocalObjectReference{{Name: "pull-secret"}},
-			Containers: []corev1.Container{{Name: "api", Env: []corev1.EnvVar{{Name: "PASSWORD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "app-secret"}}}}}, EnvFrom: []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "env-secret"}}}}}},
+			Containers:       []corev1.Container{{Name: "api", Env: []corev1.EnvVar{{Name: "PASSWORD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "app-secret"}}}}}, EnvFrom: []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "env-secret"}}}}}},
 		},
 	}
 	usage := collectSecretUsage([]corev1.Pod{pod}, []networkingv1.Ingress{{ObjectMeta: metav1.ObjectMeta{Name: "ing", Namespace: "prod"}, Spec: networkingv1.IngressSpec{TLS: []networkingv1.IngressTLS{{SecretName: "tls-secret"}}}}}, []corev1.ServiceAccount{{ObjectMeta: metav1.ObjectMeta{Name: "builder", Namespace: "prod"}, ImagePullSecrets: []corev1.LocalObjectReference{{Name: "pull-secret"}}}})

@@ -48,6 +48,15 @@ func writeJSONResponse(t *testing.T, w http.ResponseWriter, status int, object a
 	}
 }
 
+func withProbePolicy(t *testing.T, policy ProbePolicy) {
+	t.Helper()
+	previous := CurrentProbePolicy()
+	SetProbePolicy(policy)
+	t.Cleanup(func() {
+		SetProbePolicy(previous)
+	})
+}
+
 func kubeconfigBytes(t *testing.T, serverURL, authName string, withBasicAuth bool) []byte {
 	t.Helper()
 

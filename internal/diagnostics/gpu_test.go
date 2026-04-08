@@ -7,8 +7,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestGPUHelpers(t *testing.T) {
@@ -65,7 +65,7 @@ func TestCheckGPU(t *testing.T) {
 		Spec: corev1.NodeSpec{Taints: []corev1.Taint{{Key: "dedicated", Value: "gpu", Effect: corev1.TaintEffectNoSchedule}}},
 		Status: corev1.NodeStatus{
 			Capacity: corev1.ResourceList{
-				corev1.ResourceName("nvidia.com/gpu"):       resource.MustParse("4"),
+				corev1.ResourceName("nvidia.com/gpu"):         resource.MustParse("4"),
 				corev1.ResourceName("nvidia.com/mig-1g.10gb"): resource.MustParse("7"),
 			},
 			Allocatable: corev1.ResourceList{
@@ -96,14 +96,14 @@ func TestCheckGPU(t *testing.T) {
 	}
 
 	events := []corev1.Event{{
-		ObjectMeta: metav1.ObjectMeta{Name: "llm.1", Namespace: "prod", CreationTimestamp: metav1.Now()},
+		ObjectMeta:     metav1.ObjectMeta{Name: "llm.1", Namespace: "prod", CreationTimestamp: metav1.Now()},
 		InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "prod", Name: "llm"},
 		Reason:         "FailedScheduling",
 		Message:        "0/1 nodes are available: 1 Insufficient nvidia.com/gpu, 1 node(s) had untolerated taint {dedicated: gpu}.",
 		Type:           "Warning",
 		LastTimestamp:  metav1.Now(),
 	}, {
-		ObjectMeta: metav1.ObjectMeta{Name: "llm.2", Namespace: "prod", CreationTimestamp: metav1.Now()},
+		ObjectMeta:     metav1.ObjectMeta{Name: "llm.2", Namespace: "prod", CreationTimestamp: metav1.Now()},
 		InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "prod", Name: "llm"},
 		Reason:         "Failed",
 		Message:        "failed to create pod sandbox: could not select device driver \"\" with capabilities: [[gpu]]",

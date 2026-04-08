@@ -2,6 +2,7 @@ package diagnostics
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -55,8 +56,8 @@ func TestObservabilityHelpersAndCheckObservabilityAndDetection(t *testing.T) {
 	}
 
 	issues, err = CheckObservabilityAndDetection(ctx, cs, nil, "prod")
-	if err != nil || issues != nil {
-		t.Fatalf("expected namespaced check to return nil,nil, got issues=%+v err=%v", issues, err)
+	if !errors.Is(err, ErrNotApplicable) || issues != nil {
+		t.Fatalf("expected namespaced check to report not-applicable, got issues=%+v err=%v", issues, err)
 	}
 }
 

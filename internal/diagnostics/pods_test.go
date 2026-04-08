@@ -10,6 +10,7 @@ import (
 )
 
 func TestPodHelpersAndCheckPods(t *testing.T) {
+	withProbePolicy(t, ProbePolicy{EnableHostNetworkProbes: true, TargetClasses: map[string]bool{"registry": true}, TLSProbeMode: "handshake-only"})
 	if got := imageRegistryHost("nginx"); got != "registry-1.docker.io:443" {
 		t.Fatalf("unexpected registry host: %q", got)
 	}

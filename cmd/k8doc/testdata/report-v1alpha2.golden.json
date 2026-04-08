@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "v1alpha2",
+  "generatedAt": "2026-04-08T10:00:00Z",
+  "summary": {
+    "score": 92,
+    "critical": 0,
+    "warning": 1,
+    "info": 0,
+    "categories": [
+      {
+        "category": "workloads",
+        "score": 92,
+        "critical": 0,
+        "warning": 1,
+        "info": 0
+      }
+    ]
+  },
+  "issues": [
+    {
+      "kind": "Pod",
+      "namespace": "prod",
+      "name": "api-0",
+      "severity": "warning",
+      "category": "workloads",
+      "check": "pods",
+      "detection": "heuristic",
+      "confidence": "medium",
+      "summary": "pod restart count is elevated",
+      "recommendation": "Inspect the rollout and recent restarts."
+    }
+  ],
+  "execution": {
+    "status": "partial",
+    "traceId": "trace-123",
+    "startedAt": "2026-04-08T10:00:00Z",
+    "finishedAt": "2026-04-08T10:00:02Z",
+    "durationMs": 2000,
+    "apiCalls": 12,
+    "runtime": {
+      "memoryAllocBytes": 1024,
+      "totalAllocBytes": 4096,
+      "sysBytes": 8192,
+      "numGC": 1,
+      "slowChecks": 1,
+      "slowSections": 1
+    },
+    "preflight": {
+      "status": "partial",
+      "checks": [
+        {
+          "name": "list-pods",
+          "namespace": "prod",
+          "verb": "list",
+          "resource": "pods",
+          "allowed": true,
+          "reason": "granted"
+        },
+        {
+          "name": "list-nodes",
+          "verb": "list",
+          "resource": "nodes",
+          "allowed": false,
+          "reason": "denied"
+        }
+      ]
+    },
+    "checks": [
+      {
+        "name": "pods",
+        "scope": "check",
+        "status": "finding",
+        "durationMs": 1600,
+        "issueCount": 1,
+        "slow": true
+      }
+    ],
+    "sections": [
+      {
+        "name": "timeline",
+        "scope": "section",
+        "status": "ok",
+        "durationMs": 1700,
+        "slow": true
+      }
+    ],
+    "erroredChecks": 1
+  },
+  "probePolicy": {
+    "enableActiveProbes": true,
+    "targetClasses": {
+      "dns": true
+    },
+    "tlsProbeMode": "verify"
+  },
+  "options": {
+    "mode": "scan",
+    "output": "json",
+    "focus": {},
+    "timelineLimit": 5,
+    "strictReportErrors": true
+  }
+}

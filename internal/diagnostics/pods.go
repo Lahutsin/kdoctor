@@ -148,6 +148,10 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 		}
 	}
 
+	if !HostNetworkProbeEnabled("registry") {
+		return issues, nil
+	}
+
 	for registryHost := range registryHosts {
 		conn, err := net.DialTimeout("tcp", registryHost, 2*time.Second)
 		if err != nil {
@@ -157,6 +161,8 @@ func CheckPods(ctx context.Context, cs *kubernetes.Clientset, namespace string) 
 				Severity:       SeverityWarning,
 				Category:       "workloads",
 				Check:          "registry-reachability",
+				Detection:      "active-probe",
+				Confidence:     "medium",
 				Summary:        fmt.Sprintf("registry endpoint %s is not reachable from the diagnostic host", registryHost),
 				Recommendation: "Verify outbound network access, registry DNS, VPN/proxy settings, and whether the cluster uses a private registry endpoint.",
 			})

@@ -22,27 +22,27 @@ func CheckRuntimeBehavior(ctx context.Context, cs *kubernetes.Clientset, namespa
 		ns = metav1.NamespaceAll
 	}
 
-	pods, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+	pods, err := listPodsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
-	events, err := cs.CoreV1().Events(ns).List(ctx, metav1.ListOptions{})
+	events, err := listEventsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
-	cronjobs, err := cs.BatchV1().CronJobs(ns).List(ctx, metav1.ListOptions{})
+	cronjobs, err := listCronJobsCached(ctx, cs, ns)
 	if err != nil {
-		cronjobs = &batchv1.CronJobList{}
+		cronjobs = nil
 	}
-	daemonsets, err := cs.AppsV1().DaemonSets(ns).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	nodes, err := cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	daemonsets, err := listDaemonSetsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
-	serviceAccounts, err := cs.CoreV1().ServiceAccounts(ns).List(ctx, metav1.ListOptions{})
+	nodes, err := listNodesCached(ctx, cs)
+	if err != nil {
+		return nil, err
+	}
+	serviceAccounts, err := listServiceAccountsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -51,22 +51,22 @@ func CheckRuntimeBehavior(ctx context.Context, cs *kubernetes.Clientset, namespa
 		return nil, err
 	}
 
-	saIndex := make(map[string]corev1.ServiceAccount, len(serviceAccounts.Items))
-	for _, sa := range serviceAccounts.Items {
+	saIndex := make(map[string]corev1.ServiceAccount, len(serviceAccounts))
+	for _, sa := range serviceAccounts {
 		saIndex[serviceAccountKey(sa.Namespace, sa.Name)] = sa
 	}
 
 	issues := make([]Issue, 0)
-	issues = append(issues, suspiciousRestartPatternIssues(pods.Items)...)
-	issues = append(issues, unexpectedExecUsageIssues(events.Items)...)
-	issues = append(issues, recentEphemeralDebugContainerIssues(pods.Items, events.Items)...)
-	issues = append(issues, recentPrivilegedPodIssues(pods.Items, namespaces)...)
-	issues = append(issues, suspiciousOutboundBehaviorIssues(pods.Items)...)
-	issues = append(issues, unusualListeningPortIssues(pods.Items)...)
-	issues = append(issues, namespacePodChurnIssues(pods.Items, events.Items, namespaces)...)
-	issues = append(issues, recentUnexpectedTokenMountIssues(pods.Items, saIndex, namespaces)...)
-	issues = append(issues, unusualCronJobIssues(cronjobs.Items, namespaces)...)
-	issues = append(issues, unexpectedDaemonSetIssues(daemonsets.Items, pods.Items, nodes.Items, namespaces)...)
+	issues = append(issues, suspiciousRestartPatternIssues(pods)...)
+	issues = append(issues, unexpectedExecUsageIssues(events)...)
+	issues = append(issues, recentEphemeralDebugContainerIssues(pods, events)...)
+	issues = append(issues, recentPrivilegedPodIssues(pods, namespaces)...)
+	issues = append(issues, suspiciousOutboundBehaviorIssues(pods)...)
+	issues = append(issues, unusualListeningPortIssues(pods)...)
+	issues = append(issues, namespacePodChurnIssues(pods, events, namespaces)...)
+	issues = append(issues, recentUnexpectedTokenMountIssues(pods, saIndex, namespaces)...)
+	issues = append(issues, unusualCronJobIssues(cronjobs, namespaces)...)
+	issues = append(issues, unexpectedDaemonSetIssues(daemonsets, pods, nodes, namespaces)...)
 
 	return dedupeIssues(issues), nil
 }

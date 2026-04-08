@@ -25,7 +25,7 @@ func TestStorageSecurityHelpersAndCheckStorageSecurity(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "ebs-csi-node", Namespace: "prod"},
 		Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
 			HostNetwork: true,
-			Containers: []corev1.Container{{Name: "csi", Image: "ebs-csi", SecurityContext: &corev1.SecurityContext{Privileged: &privileged}}},
+			Containers:  []corev1.Container{{Name: "csi", Image: "ebs-csi", SecurityContext: &corev1.SecurityContext{Privileged: &privileged}}},
 		}}},
 	}
 	pod := corev1.Pod{

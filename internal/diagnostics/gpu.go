@@ -8,8 +8,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
@@ -29,30 +29,30 @@ func CheckGPU(ctx context.Context, cs *kubernetes.Clientset, dyn dynamic.Interfa
 		ns = metav1.NamespaceAll
 	}
 
-	nodes, err := cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	nodes, err := listNodesCached(ctx, cs)
 	if err != nil {
 		return nil, err
 	}
-	pods, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+	pods, err := listPodsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
-	events, err := cs.CoreV1().Events(ns).List(ctx, metav1.ListOptions{})
+	events, err := listEventsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
-	daemonsets, err := cs.AppsV1().DaemonSets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	daemonsets, err := listDaemonSetsCached(ctx, cs, metav1.NamespaceAll)
 	if err != nil {
 		return nil, err
 	}
-	configMaps, err := cs.CoreV1().ConfigMaps(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	configMaps, err := listConfigMapsCached(ctx, cs, metav1.NamespaceAll)
 	if err != nil {
-		configMaps = &corev1.ConfigMapList{}
+		configMaps = nil
 	}
 
 	resourceByNode := map[string]gpuResourceInventory{}
 	gpuNodes := make([]corev1.Node, 0)
-	for _, node := range nodes.Items {
+	for _, node := range nodes {
 		inventory := gpuInventoryForResources(node.Status.Capacity, node.Status.Allocatable)
 		resourceByNode[node.Name] = inventory
 		if len(inventory.capacity) > 0 || len(inventory.allocatable) > 0 || nodeLooksLikeGPUNode(node) {
@@ -62,12 +62,12 @@ func CheckGPU(ctx context.Context, cs *kubernetes.Clientset, dyn dynamic.Interfa
 
 	issues := make([]Issue, 0)
 	issues = append(issues, gpuNodeInventoryIssues(gpuNodes, resourceByNode)...)
-	issues = append(issues, gpuOperatorIssues(gpuNodes, daemonsets.Items)...)
-	issues = append(issues, gpuPodSpecIssues(pods.Items, gpuNodes, resourceByNode)...)
-	issues = append(issues, gpuSchedulingEventIssues(events.Items)...)
-	issues = append(issues, gpuRuntimeMismatchIssues(pods.Items, events.Items)...)
-	issues = append(issues, gpuObservabilityIssues(pods.Items, daemonsets.Items, configMaps.Items, dyn)...)
-	issues = append(issues, gpuOversubscriptionIssues(gpuNodes, pods.Items, resourceByNode)...)
+	issues = append(issues, gpuOperatorIssues(gpuNodes, daemonsets)...)
+	issues = append(issues, gpuPodSpecIssues(pods, gpuNodes, resourceByNode)...)
+	issues = append(issues, gpuSchedulingEventIssues(events)...)
+	issues = append(issues, gpuRuntimeMismatchIssues(pods, events)...)
+	issues = append(issues, gpuObservabilityIssues(pods, daemonsets, configMaps, dyn)...)
+	issues = append(issues, gpuOversubscriptionIssues(gpuNodes, pods, resourceByNode)...)
 
 	return dedupeIssues(issues), nil
 }

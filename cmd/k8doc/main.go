@@ -36,6 +36,20 @@ func main() {
 	var compareContext string
 	var compareKubeconfig string
 	var suppressNoise bool
+	var strictCheckErrors bool
+	var strictReportErrors bool
+	var enableActiveProbes bool
+	var enableHostNetworkProbes bool
+	var probeTargetClasses string
+	var tlsProbeMode string
+	var listChunkSize int
+	var maxListItems int
+	var maxConcurrentChecks int
+	var maxConcurrentRequests int
+	var retryAttempts int
+	var retryBackoffMS int
+	var slowOperationThresholdMS int
+	var logFormat string
 
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig file (defaults to $KUBECONFIG or ~/.kube/config)")
 	flag.StringVar(&namespace, "namespace", "", "Namespace to inspect (empty for all)")
@@ -57,6 +71,20 @@ func main() {
 	flag.StringVar(&compareContext, "compare-context", "", "Secondary kubeconfig context used for multi-cluster comparison")
 	flag.StringVar(&compareKubeconfig, "compare-kubeconfig", "", "Optional kubeconfig path for the secondary comparison context")
 	flag.BoolVar(&suppressNoise, "suppress-noise", true, "Suppress built-in non-actionable informational findings")
+	flag.BoolVar(&strictCheckErrors, "strict-check-errors", false, "Fail the run if any individual check returns an execution error")
+	flag.BoolVar(&strictReportErrors, "strict-report-errors", false, "Fail the run if optional report sections cannot be generated")
+	flag.BoolVar(&enableActiveProbes, "enable-active-probes", false, "Enable active API-proxy probes such as DNS, webhook, and control-plane endpoint checks")
+	flag.BoolVar(&enableHostNetworkProbes, "enable-host-network-probes", false, "Enable direct host-network probes such as registry, ingress TLS, and node management port checks")
+	flag.StringVar(&probeTargetClasses, "probe-target-classes", "", "Optional comma-separated probe classes allowlist, for example ingress,registry,node,dns,webhook,controlplane")
+	flag.StringVar(&tlsProbeMode, "tls-probe-mode", "handshake-only", "TLS probe mode: handshake-only or verify")
+	flag.IntVar(&listChunkSize, "list-chunk-size", 250, "Maximum number of objects to fetch per Kubernetes LIST page")
+	flag.IntVar(&maxListItems, "max-list-items", 50000, "Guardrail for maximum cached items per resource collection")
+	flag.IntVar(&maxConcurrentChecks, "max-concurrent-checks", 4, "Maximum number of checks to execute concurrently")
+	flag.IntVar(&maxConcurrentRequests, "max-concurrent-requests", 8, "Maximum number of concurrent Kubernetes API requests")
+	flag.IntVar(&retryAttempts, "retry-attempts", 3, "Maximum retry attempts for transient API and probe failures")
+	flag.IntVar(&retryBackoffMS, "retry-backoff-ms", 200, "Initial retry backoff in milliseconds for transient failures")
+	flag.IntVar(&slowOperationThresholdMS, "slow-operation-threshold-ms", 1500, "Threshold in milliseconds after which a check or section is marked slow")
+	flag.StringVar(&logFormat, "log-format", "off", "Runtime log format: off, text, or json")
 	flag.Parse()
 
 	applyProfile(&checks, &output, &failOn, &mode, profile)
@@ -72,11 +100,29 @@ func main() {
 	if err != nil {
 		fatalf("init client: %v", err)
 	}
+	checker.SetStrictCheckErrors(strictCheckErrors)
+	checker.SetRuntimeOptions(diagnostics.RuntimeOptions{
+		ListChunkSize:          listChunkSize,
+		MaxListItems:           maxListItems,
+		MaxConcurrentChecks:    maxConcurrentChecks,
+		MaxConcurrentRequests:  maxConcurrentRequests,
+		RetryAttempts:          retryAttempts,
+		RetryInitialBackoffMS:  retryBackoffMS,
+		SlowOperationThreshold: int64(slowOperationThresholdMS),
+		LogFormat:              logFormat,
+	})
+	diagnostics.SetProbePolicy(diagnostics.ProbePolicy{
+		EnableActiveProbes:      enableActiveProbes,
+		EnableHostNetworkProbes: enableHostNetworkProbes,
+		TargetClasses:           parseChecks(probeTargetClasses),
+		TLSProbeMode:            tlsProbeMode,
+	})
 
-	issues, err := checker.Run(context.Background())
+	runResult, err := checker.RunDetailed(context.Background())
 	if err != nil {
 		fatalf("run checks: %v", err)
 	}
+	issues := runResult.Issues
 	issues, appliedRules, err := diagnostics.ApplyRules(issues, rulesPath)
 	if err != nil {
 		fatalf("apply rules: %v", err)
@@ -92,19 +138,31 @@ func main() {
 	summary := buildHealthSummary(issues)
 
 	report, err := composeReport(context.Background(), checker, summary, issues, reportOptions{
-		Mode:              mode,
-		Profile:           profile,
-		Output:            output,
-		FailOn:            failOn,
-		BaselinePath:      baselinePath,
-		WriteBaselinePath: writeBaselinePath,
-		Focus:             focus,
-		TimelineLimit:     timelineLimit,
-		AppliedRules:      append(appliedRules, suppressedNoise...),
+		Mode:               mode,
+		Profile:            profile,
+		Output:             output,
+		FailOn:             failOn,
+		BaselinePath:       baselinePath,
+		WriteBaselinePath:  writeBaselinePath,
+		Focus:              focus,
+		TimelineLimit:      timelineLimit,
+		AppliedRules:       append(appliedRules, suppressedNoise...),
+		StrictReportErrors: strictReportErrors,
 	})
 	if err != nil {
 		fatalf("compose report: %v", err)
 	}
+	sectionExecutions := report.Execution.Sections
+	report.SchemaVersion = diagnostics.ReportSchemaVersion
+	report.Execution = runResult.Execution
+	report.Execution.Sections = sectionExecutions
+	for _, section := range report.Execution.Sections {
+		if section.Slow {
+			report.Execution.Runtime.SlowSections++
+		}
+	}
+	report.Execution.Status = diagnostics.OverallExecutionStatus(append(append([]diagnostics.ExecutionRecord{}, report.Execution.Checks...), report.Execution.Sections...))
+	report.ProbePolicy = diagnostics.CurrentProbePolicy()
 
 	if mode == "multi-cluster-compare" && compareContext != "" {
 		comparison, err := buildComparisonReport(compareInput{
@@ -120,16 +178,24 @@ func main() {
 			SuppressNoise:     suppressNoise,
 			CurrentIssues:     report.Issues,
 			CurrentScore:      report.Summary.Score,
+			StrictCheckErrors: strictCheckErrors,
 		})
 		if err != nil {
-			fatalf("compare clusters: %v", err)
+			report.Execution.Sections = append(report.Execution.Sections, sectionErrorRecord("multi-cluster-compare", err))
+			if strictReportErrors {
+				fatalf("compare clusters: %v", err)
+			}
+		} else {
+			report.Comparison = comparison
 		}
-		report.Comparison = comparison
 	}
 
 	if reportPath != "" {
 		if err := writeRenderedReport(reportPath, reportFormat, report); err != nil {
-			fatalf("write report: %v", err)
+			report.Execution.Sections = append(report.Execution.Sections, sectionErrorRecord("render-report", err))
+			if strictReportErrors {
+				fatalf("write report: %v", err)
+			}
 		}
 	}
 
@@ -145,6 +211,9 @@ func main() {
 
 	if report.Options.FailOn != "" && meetsFailThreshold(report.Issues, report.Options.FailOn) {
 		os.Exit(2)
+	}
+	if strictCheckErrors && report.Execution.ErroredChecks > 0 {
+		os.Exit(1)
 	}
 }
 
@@ -174,21 +243,25 @@ type baselineDiff struct {
 }
 
 type reportOptions struct {
-	Mode              string                `json:"mode"`
-	Profile           string                `json:"profile,omitempty"`
-	Output            string                `json:"output"`
-	FailOn            string                `json:"failOn,omitempty"`
-	BaselinePath      string                `json:"baselinePath,omitempty"`
-	WriteBaselinePath string                `json:"writeBaselinePath,omitempty"`
-	Focus             diagnostics.FocusSpec `json:"focus,omitempty"`
-	TimelineLimit     int                   `json:"timelineLimit,omitempty"`
-	AppliedRules      []string              `json:"appliedRules,omitempty"`
+	Mode               string                `json:"mode"`
+	Profile            string                `json:"profile,omitempty"`
+	Output             string                `json:"output"`
+	FailOn             string                `json:"failOn,omitempty"`
+	BaselinePath       string                `json:"baselinePath,omitempty"`
+	WriteBaselinePath  string                `json:"writeBaselinePath,omitempty"`
+	Focus              diagnostics.FocusSpec `json:"focus,omitempty"`
+	TimelineLimit      int                   `json:"timelineLimit,omitempty"`
+	AppliedRules       []string              `json:"appliedRules,omitempty"`
+	StrictReportErrors bool                  `json:"strictReportErrors,omitempty"`
 }
 
 type scanReport struct {
+	SchemaVersion    string                         `json:"schemaVersion"`
 	GeneratedAt      time.Time                      `json:"generatedAt"`
 	Summary          healthSummary                  `json:"summary"`
 	Issues           []diagnostics.Issue            `json:"issues"`
+	Execution        diagnostics.ExecutionSummary   `json:"execution"`
+	ProbePolicy      diagnostics.ProbePolicy        `json:"probePolicy,omitempty"`
 	Baseline         *baselineDiff                  `json:"baseline,omitempty"`
 	Explanations     []diagnostics.Explanation      `json:"explanations,omitempty"`
 	Timeline         []diagnostics.TimelineEntry    `json:"timeline,omitempty"`
@@ -220,22 +293,62 @@ type compareInput struct {
 	SuppressNoise     bool
 	CurrentIssues     []diagnostics.Issue
 	CurrentScore      int
+	StrictCheckErrors bool
 }
 
 func composeReport(ctx context.Context, checker *diagnostics.Checker, summary healthSummary, issues []diagnostics.Issue, opts reportOptions) (scanReport, error) {
 	report := scanReport{
-		GeneratedAt: time.Now().UTC(),
-		Summary:     summary,
-		Issues:      issues,
-		Options:     opts,
+		SchemaVersion: diagnostics.ReportSchemaVersion,
+		GeneratedAt:   time.Now().UTC(),
+		Summary:       summary,
+		Issues:        issues,
+		Options:       opts,
+	}
+	sectionExecutions := make([]diagnostics.ExecutionRecord, 0)
+	addSection := func(record diagnostics.ExecutionRecord) {
+		sectionExecutions = append(sectionExecutions, record)
+	}
+	runSection := func(name string, required bool, fn func() error) error {
+		start := time.Now()
+		err := fn()
+		duration := time.Since(start).Milliseconds()
+		record := diagnostics.ExecutionRecord{
+			Name:       name,
+			Scope:      "section",
+			DurationMS: duration,
+			Slow:       duration >= diagnostics.NormalizeRuntimeOptions(diagnostics.RuntimeOptions{}).SlowOperationThreshold,
+		}
+		if err == nil {
+			record.Status = diagnostics.ExecutionStatusOK
+			addSection(record)
+			return nil
+		}
+		status, code, permissionHint := diagnostics.ClassifyExecutionError(err)
+		record.Status = status
+		record.ErrorCode = code
+		record.ErrorMessage = err.Error()
+		record.PermissionHint = permissionHint
+		if record.Status == diagnostics.ExecutionStatusOK {
+			record.Status = diagnostics.ExecutionStatusError
+		}
+		addSection(record)
+		if required || opts.StrictReportErrors {
+			return err
+		}
+		return nil
 	}
 
 	if opts.BaselinePath != "" {
-		diff, err := loadAndCompareBaseline(opts.BaselinePath, issues)
-		if err != nil {
+		if err := runSection("baseline", false, func() error {
+			diff, err := loadAndCompareBaseline(opts.BaselinePath, issues)
+			if err != nil {
+				return err
+			}
+			report.Baseline = diff
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		report.Baseline = diff
 	}
 
 	namespace := checker.NamespaceScope()
@@ -250,99 +363,170 @@ func composeReport(ctx context.Context, checker *diagnostics.Checker, summary he
 
 	if need("explain") {
 		report.Explanations = diagnostics.BuildExplanations(issues)
+		addSection(diagnostics.ExecutionRecord{Name: "explain", Scope: "section", Status: diagnostics.ExecutionStatusOK, IssueCount: len(report.Explanations)})
 	}
 	if need("timeline") {
-		timeline, err := diagnostics.BuildTimeline(ctx, checker.Clientset(), namespace, opts.TimelineLimit)
-		if err != nil {
+		if err := runSection("timeline", false, func() error {
+			timeline, err := diagnostics.BuildTimeline(ctx, checker.Clientset(), namespace, opts.TimelineLimit)
+			if err != nil {
+				return err
+			}
+			report.Timeline = timeline
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		report.Timeline = timeline
 	}
 	if need("dependencies") {
-		deps, err := diagnostics.BuildDependencies(ctx, checker.Clientset(), namespace, opts.Focus)
-		if err != nil {
+		if err := runSection("dependencies", false, func() error {
+			deps, err := diagnostics.BuildDependencies(ctx, checker.Clientset(), namespace, opts.Focus)
+			if err != nil {
+				return err
+			}
+			controllerDeps, controllerErr := diagnostics.BuildControllerDependencyEdges(ctx, checker.Clientset(), namespace, opts.Focus)
+			if controllerErr == nil {
+				deps = append(deps, controllerDeps...)
+			}
+			report.Dependencies = deps
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		controllerDeps, err := diagnostics.BuildControllerDependencyEdges(ctx, checker.Clientset(), namespace, opts.Focus)
-		if err == nil {
-			deps = append(deps, controllerDeps...)
-		}
-		report.Dependencies = deps
 	}
 	if need("service-view") {
 		serviceName := ""
 		if opts.Focus.Kind == "service" {
 			serviceName = opts.Focus.Value
 		}
-		views, err := diagnostics.BuildServiceViews(ctx, checker.Clientset(), namespace, serviceName)
-		if err != nil {
+		if err := runSection("service-view", false, func() error {
+			views, err := diagnostics.BuildServiceViews(ctx, checker.Clientset(), namespace, serviceName)
+			if err != nil {
+				return err
+			}
+			report.ServiceViews = views
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		report.ServiceViews = views
 	}
 	if need("node-pool-view") {
-		views, err := diagnostics.BuildNodePoolViews(ctx, checker.Clientset(), issues)
-		if err != nil {
+		if err := runSection("node-pool-view", false, func() error {
+			views, err := diagnostics.BuildNodePoolViews(ctx, checker.Clientset(), issues)
+			if err != nil {
+				return err
+			}
+			report.NodePoolViews = views
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		report.NodePoolViews = views
 	}
 	if need("network-path") {
-		paths, err := diagnostics.BuildNetworkPaths(ctx, checker.Clientset(), namespace, opts.Focus)
-		if err != nil {
+		if err := runSection("network-path", false, func() error {
+			paths, err := diagnostics.BuildNetworkPaths(ctx, checker.Clientset(), namespace, opts.Focus)
+			if err != nil {
+				return err
+			}
+			report.NetworkPaths = paths
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		report.NetworkPaths = paths
 	}
 	if need("storage-path") {
-		paths, err := diagnostics.BuildStoragePaths(ctx, checker.Clientset(), namespace, opts.Focus)
-		if err != nil {
+		if err := runSection("storage-path", false, func() error {
+			paths, err := diagnostics.BuildStoragePaths(ctx, checker.Clientset(), namespace, opts.Focus)
+			if err != nil {
+				return err
+			}
+			report.StoragePaths = paths
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		report.StoragePaths = paths
 	}
 	if need("release-readiness") {
 		report.ReleaseReadiness = diagnostics.EvaluateReleaseReadiness(issues)
+		addSection(diagnostics.ExecutionRecord{Name: "release-readiness", Scope: "section", Status: diagnostics.ExecutionStatusOK, IssueCount: len(report.ReleaseReadiness)})
 	}
 	if need("upgrade-readiness") {
-		advisories, err := diagnostics.EvaluateUpgradeReadiness(ctx, checker.Clientset(), namespace, issues)
-		if err != nil {
+		if err := runSection("upgrade-readiness", false, func() error {
+			advisories, err := diagnostics.EvaluateUpgradeReadiness(ctx, checker.Clientset(), namespace, issues)
+			if err != nil {
+				return err
+			}
+			report.UpgradeReadiness = advisories
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		report.UpgradeReadiness = advisories
 	}
 	if need("security") {
-		advisories, err := diagnostics.EvaluateSecurityPosture(ctx, checker.Clientset(), namespace, issues)
-		if err != nil {
+		if err := runSection("security", false, func() error {
+			advisories, err := diagnostics.EvaluateSecurityPosture(ctx, checker.Clientset(), namespace, issues)
+			if err != nil {
+				return err
+			}
+			report.SecurityPosture = advisories
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		report.SecurityPosture = advisories
 	}
 	if need("cost") {
-		advisories, err := diagnostics.EvaluateCostWaste(ctx, checker.Clientset(), namespace, issues)
-		if err != nil {
+		if err := runSection("cost", false, func() error {
+			advisories, err := diagnostics.EvaluateCostWaste(ctx, checker.Clientset(), namespace, issues)
+			if err != nil {
+				return err
+			}
+			report.CostWaste = advisories
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		report.CostWaste = advisories
 	}
 	if need("slo") {
-		insights, err := diagnostics.BuildSLOInsights(ctx, checker.Clientset(), namespace, issues)
-		if err != nil {
+		if err := runSection("slo", false, func() error {
+			insights, err := diagnostics.BuildSLOInsights(ctx, checker.Clientset(), namespace, issues)
+			if err != nil {
+				return err
+			}
+			report.SLOInsights = insights
+			return nil
+		}); err != nil {
 			return report, err
 		}
-		report.SLOInsights = insights
 	}
 	if need("remediation") {
 		report.Remediations = diagnostics.BuildRemediations(issues)
+		addSection(diagnostics.ExecutionRecord{Name: "remediation", Scope: "section", Status: diagnostics.ExecutionStatusOK, IssueCount: len(report.Remediations)})
 	}
 
 	if opts.WriteBaselinePath != "" {
-		if err := writeBaseline(opts.WriteBaselinePath, report); err != nil {
+		if err := runSection("write-baseline", false, func() error {
+			return writeBaseline(opts.WriteBaselinePath, report)
+		}); err != nil {
 			return report, err
 		}
 	}
+	report.Execution.Sections = sectionExecutions
 
 	return report, nil
+}
+
+func sectionErrorRecord(name string, err error) diagnostics.ExecutionRecord {
+	status, code, permissionHint := diagnostics.ClassifyExecutionError(err)
+	if status == diagnostics.ExecutionStatusOK {
+		status = diagnostics.ExecutionStatusError
+	}
+	return diagnostics.ExecutionRecord{
+		Name:           name,
+		Scope:          "section",
+		Status:         status,
+		ErrorCode:      code,
+		ErrorMessage:   err.Error(),
+		PermissionHint: permissionHint,
+	}
 }
 
 func defaultChecks() string {
@@ -480,7 +664,7 @@ func clampScore(score int) int {
 }
 
 func renderMode(report scanReport) {
-	renderSummary(report.Summary, report.Baseline, report.Options)
+	renderSummary(report.Summary, report.Baseline, report.Options, report.Execution)
 	switch report.Options.Mode {
 	case "explain":
 		renderExplanations(report.Explanations)
@@ -541,8 +725,11 @@ func renderMode(report scanReport) {
 	}
 }
 
-func renderSummary(summary healthSummary, diff *baselineDiff, opts reportOptions) {
+func renderSummary(summary healthSummary, diff *baselineDiff, opts reportOptions, execution diagnostics.ExecutionSummary) {
 	fmt.Printf("Health score: %d/100 | critical=%d warning=%d info=%d\n", summary.Score, summary.Critical, summary.Warning, summary.Info)
+	if execution.TraceID != "" {
+		fmt.Printf("Execution: status=%s trace=%s apiCalls=%d\n", execution.Status, execution.TraceID, execution.APICalls)
+	}
 	if diff != nil {
 		fmt.Printf("Diff: new=%d resolved=%d worsened=%d\n", diff.NewCount, diff.ResolvedCount, diff.WorsenedCount)
 	}
@@ -551,6 +738,9 @@ func renderSummary(summary healthSummary, diff *baselineDiff, opts reportOptions
 	}
 	if len(opts.AppliedRules) > 0 {
 		fmt.Printf("Rules: %s\n", strings.Join(opts.AppliedRules, ", "))
+	}
+	if opts.StrictReportErrors {
+		fmt.Println("Report sections: strict")
 	}
 	parts := make([]string, 0, len(summary.Categories))
 	for _, category := range summary.Categories {
@@ -915,10 +1105,12 @@ func buildComparisonReport(input compareInput) (*diagnostics.ClusterComparison, 
 	if err != nil {
 		return nil, err
 	}
-	issues, err := checker.Run(context.Background())
+	checker.SetStrictCheckErrors(input.StrictCheckErrors)
+	runResult, err := checker.RunDetailed(context.Background())
 	if err != nil {
 		return nil, err
 	}
+	issues := runResult.Issues
 	issues, _, err = diagnostics.ApplyRules(issues, input.RulesPath)
 	if err != nil {
 		return nil, err

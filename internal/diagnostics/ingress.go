@@ -74,7 +74,9 @@ func CheckIngresses(ctx context.Context, cs *kubernetes.Clientset, dyn dynamic.I
 		issues = append(issues, checkIngressBackends(ctx, cs, ing)...)
 		issues = append(issues, checkIngressTLS(ctx, cs, ing, namespaces[ing.Namespace])...)
 		issues = append(issues, checkIngressExternalExposure(ing, namespaces[ing.Namespace], serviceIndex)...)
-		issues = append(issues, probeIngressHandshake(ing)...)
+		if HostNetworkProbeEnabled("ingress") {
+			issues = append(issues, probeIngressHandshake(ing)...)
+		}
 	}
 
 	issues = append(issues, checkGatewayExposure(ctx, cs, dyn, ns, namespaces)...)
@@ -283,7 +285,11 @@ func probeIngressHandshake(ing networkingv1.Ingress) []Issue {
 	hostPort := net.JoinHostPort(target, "443")
 	start := time.Now()
 	dialer := &net.Dialer{Timeout: 3 * time.Second}
-	conn, err := tls.DialWithDialer(dialer, "tcp", hostPort, &tls.Config{InsecureSkipVerify: true, ServerName: serverName})
+	tlsConfig := &tls.Config{ServerName: serverName}
+	if TLSProbeMode() == "handshake-only" {
+		tlsConfig.InsecureSkipVerify = true
+	}
+	conn, err := tls.DialWithDialer(dialer, "tcp", hostPort, tlsConfig)
 	if err != nil {
 		return []Issue{{
 			Kind:           "Ingress",
@@ -292,6 +298,8 @@ func probeIngressHandshake(ing networkingv1.Ingress) []Issue {
 			Severity:       SeverityWarning,
 			Category:       "networking",
 			Check:          "ingress-handshake",
+			Detection:      "active-probe",
+			Confidence:     "medium",
 			Summary:        fmt.Sprintf("TLS handshake to %s failed: %v", target, err),
 			Recommendation: "Check ingress listener reachability, LB security groups/firewall rules, and certificate chain.",
 		}}
@@ -308,6 +316,8 @@ func probeIngressHandshake(ing networkingv1.Ingress) []Issue {
 			Severity:       SeverityWarning,
 			Category:       "networking",
 			Check:          "ingress-handshake-latency",
+			Detection:      "active-probe",
+			Confidence:     "medium",
 			Summary:        fmt.Sprintf("TLS handshake to %s is slow (~%dms)", target, latency.Milliseconds()),
 			Recommendation: "Investigate load balancer health, upstream connectivity, and TLS termination performance.",
 			References:     []string{"tcp/443"},
@@ -338,7 +348,11 @@ func probeIngressHandshake(ing networkingv1.Ingress) []Issue {
 		})
 	}
 	for _, version := range []uint16{tls.VersionTLS10, tls.VersionTLS11} {
-		legacyConn, err := tls.DialWithDialer(dialer, "tcp", hostPort, &tls.Config{InsecureSkipVerify: true, ServerName: serverName, MinVersion: version, MaxVersion: version})
+		legacyTLSConfig := &tls.Config{ServerName: serverName, MinVersion: version, MaxVersion: version}
+		if TLSProbeMode() == "handshake-only" {
+			legacyTLSConfig.InsecureSkipVerify = true
+		}
+		legacyConn, err := tls.DialWithDialer(dialer, "tcp", hostPort, legacyTLSConfig)
 		if err != nil {
 			continue
 		}

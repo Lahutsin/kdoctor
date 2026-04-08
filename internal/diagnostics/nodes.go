@@ -211,6 +211,9 @@ func kubeletSecurityConfigIssues(ctx context.Context, cs *kubernetes.Clientset, 
 }
 
 func fetchKubeletConfig(ctx context.Context, cs *kubernetes.Clientset, nodeName string) (kubeletConfigSnapshot, bool) {
+	if !ActiveProbeEnabled("node") {
+		return kubeletConfigSnapshot{}, false
+	}
 	raw, err := cs.CoreV1().RESTClient().Get().AbsPath("/api/v1/nodes/" + nodeName + "/proxy/configz").Do(ctx).Raw()
 	if err != nil || len(raw) == 0 {
 		return kubeletConfigSnapshot{}, false
@@ -488,6 +491,9 @@ func nodeAddress(node v1.Node, addrType v1.NodeAddressType) string {
 }
 
 func tcpPortReachable(address string, port int, timeout time.Duration) bool {
+	if !HostNetworkProbeEnabled("node") {
+		return false
+	}
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(address, fmt.Sprintf("%d", port)), timeout)
 	if err != nil {
 		return false

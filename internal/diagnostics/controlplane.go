@@ -48,6 +48,9 @@ func CheckControlPlane(ctx context.Context, cs *kubernetes.Clientset) ([]Issue, 
 }
 
 func probeEtcd(ctx context.Context, cs *kubernetes.Clientset) *Issue {
+	if !ActiveProbeEnabled("controlplane") {
+		return nil
+	}
 	start := time.Now()
 	result := cs.Discovery().RESTClient().Get().AbsPath("/livez/etcd").Do(ctx)
 	var code int
@@ -89,6 +92,9 @@ func probeEtcd(ctx context.Context, cs *kubernetes.Clientset) *Issue {
 
 // probeEtcdSize inspects etcd metrics for DB size to hint defrag needs.
 func probeEtcdSize(ctx context.Context, cs *kubernetes.Clientset) *Issue {
+	if !ActiveProbeEnabled("controlplane") {
+		return nil
+	}
 	res := cs.Discovery().RESTClient().Get().AbsPath("/metrics").Do(ctx)
 	raw, err := res.Raw()
 	if err != nil {
@@ -197,6 +203,9 @@ func isPodReady(pod *corev1.Pod) bool {
 
 // scrapeComponentMetrics pulls minimal metrics from a control-plane pod via the API proxy.
 func scrapeComponentMetrics(ctx context.Context, cs *kubernetes.Clientset, pod corev1.Pod, component string) []Issue {
+	if !ActiveProbeEnabled("controlplane") {
+		return nil
+	}
 	path := "/metrics"
 	res := cs.CoreV1().RESTClient().Get().Namespace(pod.Namespace).Resource("pods").Name(pod.Name).SubResource("proxy").Suffix(strings.TrimPrefix(path, "/")).Do(ctx)
 	raw, err := res.Raw()

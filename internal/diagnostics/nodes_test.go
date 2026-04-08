@@ -12,6 +12,7 @@ import (
 )
 
 func TestNodeHelpersAndCheckNodes(t *testing.T) {
+	withProbePolicy(t, ProbePolicy{EnableActiveProbes: true, EnableHostNetworkProbes: true, TargetClasses: map[string]bool{"node": true}, TLSProbeMode: "handshake-only"})
 	now := time.Now()
 	node := corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{"tenant": "payments"}},

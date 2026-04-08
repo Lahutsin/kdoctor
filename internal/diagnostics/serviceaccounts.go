@@ -31,11 +31,11 @@ func CheckServiceAccountsAndTokens(ctx context.Context, cs *kubernetes.Clientset
 	if err != nil {
 		return nil, err
 	}
-	serviceAccounts, err := cs.CoreV1().ServiceAccounts(ns).List(ctx, metav1.ListOptions{})
+	serviceAccounts, err := listServiceAccountsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
-	pods, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+	pods, err := listPodsCached(ctx, cs, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -53,60 +53,44 @@ func CheckServiceAccountsAndTokens(ctx context.Context, cs *kubernetes.Clientset
 	issues := make([]Issue, 0)
 	issues = append(issues, crossNamespaceSecretIssues...)
 	issues = append(issues, inspectLongLivedTokens(ctx, cs)...)
-	issues = append(issues, serviceAccountAutomountIssues(serviceAccounts.Items, pods.Items, namespaces, saRules)...)
-	issues = append(issues, defaultServiceAccountUsageIssues(pods.Items, namespaces)...)
-	issues = append(issues, projectedTokenLifetimeIssues(pods.Items)...)
-	issues = append(issues, unnecessaryTokenMountIssues(pods.Items, serviceAccounts.Items, namespaces, saRules, provider)...)
-	issues = append(issues, workloadIdentityIssues(serviceAccounts.Items, pods.Items, provider, saSources)...)
+	issues = append(issues, serviceAccountAutomountIssues(serviceAccounts, pods, namespaces, saRules)...)
+	issues = append(issues, defaultServiceAccountUsageIssues(pods, namespaces)...)
+	issues = append(issues, projectedTokenLifetimeIssues(pods)...)
+	issues = append(issues, unnecessaryTokenMountIssues(pods, serviceAccounts, namespaces, saRules, provider)...)
+	issues = append(issues, workloadIdentityIssues(serviceAccounts, pods, provider, saSources)...)
 
 	return dedupeIssues(issues), nil
 }
 
 func listNamespaceMeta(ctx context.Context, cs *kubernetes.Clientset, namespace string) (map[string]namespaceMeta, error) {
-	result := make(map[string]namespaceMeta)
-	if namespace != "" {
-		ns, err := cs.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
-		if err != nil {
-			return nil, err
-		}
-		result[ns.Name] = namespaceMeta{name: ns.Name, labels: ns.Labels, annotations: ns.Annotations}
-		return result, nil
-	}
-	namespaces, err := cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	for _, ns := range namespaces.Items {
-		result[ns.Name] = namespaceMeta{name: ns.Name, labels: ns.Labels, annotations: ns.Annotations}
-	}
-	return result, nil
+	return listNamespaceMetaCached(ctx, cs, namespace)
 }
 
 func buildRoleIndex(ctx context.Context, cs *kubernetes.Clientset, namespace string) (map[string]rbacRoleMeta, error) {
-	clusterRoles, err := cs.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{})
+	clusterRoles, err := listClusterRolesCached(ctx, cs)
 	if err != nil {
 		return nil, err
 	}
-	roles, err := cs.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{})
+	roles, err := listRolesCached(ctx, cs, namespace)
 	if err != nil {
 		return nil, err
 	}
-	index := make(map[string]rbacRoleMeta, len(clusterRoles.Items)+len(roles.Items))
-	for _, role := range clusterRoles.Items {
+	index := make(map[string]rbacRoleMeta, len(clusterRoles)+len(roles))
+	for _, role := range clusterRoles {
 		index[roleKey("ClusterRole", "", role.Name)] = rbacRoleMeta{kind: "ClusterRole", name: role.Name, rules: role.Rules}
 	}
-	for _, role := range roles.Items {
+	for _, role := range roles {
 		index[roleKey("Role", role.Namespace, role.Name)] = rbacRoleMeta{kind: "Role", namespace: role.Namespace, name: role.Name, rules: role.Rules}
 	}
 	return index, nil
 }
 
 func buildServiceAccountRBACView(ctx context.Context, cs *kubernetes.Clientset, namespace string, roleIndex map[string]rbacRoleMeta) (map[string][]rbacv1.PolicyRule, map[string][]string, []Issue, error) {
-	clusterRoleBindings, err := cs.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
+	clusterRoleBindings, err := listClusterRoleBindingsCached(ctx, cs)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	roleBindings, err := cs.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{})
+	roleBindings, err := listRoleBindingsCached(ctx, cs, namespace)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -115,7 +99,7 @@ func buildServiceAccountRBACView(ctx context.Context, cs *kubernetes.Clientset, 
 	saSources := map[string][]string{}
 	issues := make([]Issue, 0)
 
-	for _, binding := range clusterRoleBindings.Items {
+	for _, binding := range clusterRoleBindings {
 		meta, ok := roleIndex[roleKey(binding.RoleRef.Kind, "", binding.RoleRef.Name)]
 		if !ok {
 			continue
@@ -143,7 +127,7 @@ func buildServiceAccountRBACView(ctx context.Context, cs *kubernetes.Clientset, 
 		}
 	}
 
-	for _, binding := range roleBindings.Items {
+	for _, binding := range roleBindings {
 		roleNS := binding.Namespace
 		if strings.EqualFold(binding.RoleRef.Kind, "ClusterRole") {
 			roleNS = ""

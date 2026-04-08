@@ -12,6 +12,7 @@ import (
 )
 
 func TestCheckDNS(t *testing.T) {
+	withProbePolicy(t, ProbePolicy{EnableActiveProbes: true, TargetClasses: map[string]bool{"dns": true}, TLSProbeMode: "handshake-only"})
 	ctx := context.Background()
 
 	missingCS := newHTTPBackedClientset(t, func(w http.ResponseWriter, r *http.Request) {

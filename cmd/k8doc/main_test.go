@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +15,8 @@ import (
 	"time"
 
 	"k8doc/internal/diagnostics"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
 func captureStdout(t *testing.T, fn func()) string {
@@ -76,9 +80,16 @@ func sampleReport() scanReport {
 	timestamp := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
 	issues := sampleIssues()
 	return scanReport{
-		GeneratedAt: timestamp,
-		Summary:     buildHealthSummary(issues),
-		Issues:      issues,
+		SchemaVersion: diagnostics.ReportSchemaVersion,
+		GeneratedAt:   timestamp,
+		Summary:       buildHealthSummary(issues),
+		Issues:        issues,
+		Execution: diagnostics.ExecutionSummary{
+			Status:  diagnostics.ExecutionStatusPartial,
+			TraceID: "trace-sample",
+			Checks:  []diagnostics.ExecutionRecord{{Name: "pods", Scope: "check", Status: diagnostics.ExecutionStatusFinding, IssueCount: len(issues)}},
+		},
+		ProbePolicy: diagnostics.ProbePolicy{EnableActiveProbes: true, TLSProbeMode: "verify"},
 		Baseline: &baselineDiff{
 			NewCount:      1,
 			ResolvedCount: 2,
@@ -177,6 +188,91 @@ func sampleReport() scanReport {
 			AppliedRules: []string{"severity override", "noise suppression"},
 		},
 	}
+}
+
+func serializationFixtureReport() scanReport {
+	timestamp := time.Date(2026, 4, 8, 10, 0, 0, 0, time.UTC)
+	return scanReport{
+		SchemaVersion: diagnostics.ReportSchemaVersion,
+		GeneratedAt:   timestamp,
+		Summary: healthSummary{
+			Score:    92,
+			Critical: 0,
+			Warning:  1,
+			Info:     0,
+			Categories: []categorySummary{{
+				Category: "workloads",
+				Score:    92,
+				Critical: 0,
+				Warning:  1,
+				Info:     0,
+			}},
+		},
+		Issues: []diagnostics.Issue{{
+			Kind:           "Pod",
+			Namespace:      "prod",
+			Name:           "api-0",
+			Severity:       diagnostics.SeverityWarning,
+			Category:       "workloads",
+			Check:          "pods",
+			Detection:      "heuristic",
+			Confidence:     "medium",
+			Summary:        "pod restart count is elevated",
+			Recommendation: "Inspect the rollout and recent restarts.",
+		}},
+		Execution: diagnostics.ExecutionSummary{
+			Status:     diagnostics.ExecutionStatusPartial,
+			TraceID:    "trace-123",
+			StartedAt:  timestamp,
+			FinishedAt: timestamp.Add(2 * time.Second),
+			DurationMS: 2000,
+			APICalls:   12,
+			Runtime: diagnostics.RuntimeStats{
+				MemoryAllocBytes: 1024,
+				TotalAllocBytes:  4096,
+				SysBytes:         8192,
+				NumGC:            1,
+				SlowChecks:       1,
+				SlowSections:     1,
+			},
+			Preflight: diagnostics.CapabilitySummary{
+				Status: diagnostics.ExecutionStatusPartial,
+				Checks: []diagnostics.CapabilityCheck{
+					{Name: "list-pods", Namespace: "prod", Verb: "list", Resource: "pods", Allowed: true, Reason: "granted"},
+					{Name: "list-nodes", Verb: "list", Resource: "nodes", Allowed: false, Reason: "denied"},
+				},
+			},
+			Checks:        []diagnostics.ExecutionRecord{{Name: "pods", Scope: "check", Status: diagnostics.ExecutionStatusFinding, DurationMS: 1600, IssueCount: 1, Slow: true}},
+			Sections:      []diagnostics.ExecutionRecord{{Name: "timeline", Scope: "section", Status: diagnostics.ExecutionStatusOK, DurationMS: 1700, Slow: true}},
+			ErroredChecks: 1,
+		},
+		ProbePolicy: diagnostics.ProbePolicy{
+			EnableActiveProbes: true,
+			TargetClasses:      map[string]bool{"dns": true},
+			TLSProbeMode:       "verify",
+		},
+		Options: reportOptions{
+			Mode:               "scan",
+			Output:             "json",
+			TimelineLimit:      5,
+			StrictReportErrors: true,
+		},
+	}
+}
+
+func kubeconfigBytesForMain(t *testing.T, serverURL string) []byte {
+	t.Helper()
+	cfg := clientcmdapi.Config{
+		Clusters:       map[string]*clientcmdapi.Cluster{"prod": {Server: serverURL}},
+		Contexts:       map[string]*clientcmdapi.Context{"prod-admin": {Cluster: "prod", AuthInfo: "reader"}},
+		CurrentContext: "prod-admin",
+		AuthInfos:      map[string]*clientcmdapi.AuthInfo{"reader": {Token: "static-token"}},
+	}
+	raw, err := clientcmd.Write(cfg)
+	if err != nil {
+		t.Fatalf("write kubeconfig: %v", err)
+	}
+	return raw
 }
 
 func TestDefaultChecksAndParseChecks(t *testing.T) {
@@ -355,6 +451,49 @@ func TestComposeReportModeSpecificSections(t *testing.T) {
 	}
 }
 
+func TestComposeReportDegradesOptionalSections(t *testing.T) {
+	issues := sampleIssues()
+	report, err := composeReport(nil, nil, buildHealthSummary(issues), issues, reportOptions{
+		Mode:              "timeline",
+		Output:            "json",
+		BaselinePath:      filepath.Join(t.TempDir(), "missing-baseline.json"),
+		WriteBaselinePath: filepath.Join(t.TempDir(), "missing-dir", "baseline.json"),
+	})
+	if err != nil {
+		t.Fatalf("expected composeReport to degrade optional section errors, got %v", err)
+	}
+	if report.SchemaVersion != "v1alpha2" {
+		t.Fatalf("expected schema version, got %+v", report)
+	}
+	if len(report.Execution.Sections) == 0 {
+		t.Fatalf("expected section execution records, got %+v", report.Execution)
+	}
+	seenError := false
+	for _, record := range report.Execution.Sections {
+		if record.Status != diagnostics.ExecutionStatusOK {
+			seenError = true
+		}
+	}
+	if !seenError {
+		t.Fatalf("expected degraded section errors, got %+v", report.Execution.Sections)
+	}
+	if report.Baseline != nil {
+		t.Fatalf("expected missing baseline to be skipped, got %+v", report.Baseline)
+	}
+}
+
+func TestComposeReportStrictReportErrors(t *testing.T) {
+	_, err := composeReport(nil, nil, buildHealthSummary(sampleIssues()), sampleIssues(), reportOptions{
+		Mode:               "timeline",
+		Output:             "json",
+		BaselinePath:       filepath.Join(t.TempDir(), "missing-baseline.json"),
+		StrictReportErrors: true,
+	})
+	if err == nil {
+		t.Fatal("expected strict report errors to fail composeReport")
+	}
+}
+
 func TestRenderModeAndRenderHelpers(t *testing.T) {
 	report := sampleReport()
 
@@ -518,6 +657,29 @@ func TestWriteBaselineAndRenderedReport(t *testing.T) {
 	}
 }
 
+func TestPublishedOutputContract(t *testing.T) {
+	schemaPath := filepath.Join("..", "..", "schema", "k8doc-report-v1alpha2.schema.json")
+	schemaData, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("read schema: %v", err)
+	}
+	if !strings.Contains(string(schemaData), diagnostics.ReportSchemaVersion) {
+		t.Fatalf("schema does not mention report version %q", diagnostics.ReportSchemaVersion)
+	}
+	goldenPath := filepath.Join("testdata", "report-v1alpha2.golden.json")
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	got, err := json.MarshalIndent(serializationFixtureReport(), "", "  ")
+	if err != nil {
+		t.Fatalf("marshal fixture: %v", err)
+	}
+	if strings.TrimSpace(string(got)) != strings.TrimSpace(string(want)) {
+		t.Fatalf("golden mismatch\nwant:\n%s\n\ngot:\n%s", string(want), string(got))
+	}
+}
+
 func TestLoadAndCompareBaseline(t *testing.T) {
 	previous := scanReport{
 		Issues: []diagnostics.Issue{
@@ -580,6 +742,49 @@ func TestBuildComparisonReportReturnsErrorForInvalidKubeconfig(t *testing.T) {
 	}
 }
 
+func TestBuildComparisonReportSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api":
+			_, _ = w.Write([]byte(`{"kind":"APIVersions","versions":["v1"],"serverAddressByClientCIDRs":[]}`))
+		default:
+			_, _ = w.Write([]byte(`{"kind":"Status","apiVersion":"v1","status":"Success"}`))
+		}
+	}))
+	defer server.Close()
+
+	kubeconfigPath := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(kubeconfigPath, kubeconfigBytesForMain(t, server.URL), 0o644); err != nil {
+		t.Fatalf("write kubeconfig: %v", err)
+	}
+
+	comparison, err := buildComparisonReport(compareInput{
+		BaseKubeconfig:    kubeconfigPath,
+		BaseContext:       "prod-a",
+		CompareContext:    "",
+		Checks:            "noop",
+		Timeout:           time.Second,
+		CurrentIssues:     sampleIssues(),
+		CurrentScore:      70,
+		SuppressNoise:     true,
+		StrictCheckErrors: false,
+	})
+	if err != nil {
+		t.Fatalf("expected successful comparison build, got %v", err)
+	}
+	if comparison == nil || comparison.BaseContext != "prod-a" || comparison.CompareContext != "" {
+		t.Fatalf("unexpected comparison: %+v", comparison)
+	}
+}
+
+func TestSectionErrorRecord(t *testing.T) {
+	record := sectionErrorRecord("timeline", diagnostics.NotApplicableError("namespace"))
+	if record.Name != "timeline" || record.Scope != "section" || record.Status != diagnostics.ExecutionStatusNotApplicable || record.ErrorCode != "not_applicable" {
+		t.Fatalf("unexpected section error record: %+v", record)
+	}
+}
+
 func TestMainExitsForInvalidKubeconfig(t *testing.T) {
 	if os.Getenv("KDOC_MAIN_SUBPROCESS") == "1" {
 		oldArgs := os.Args
@@ -610,6 +815,57 @@ func TestMainExitsForInvalidKubeconfig(t *testing.T) {
 	}
 	if exitErr.ExitCode() != 1 {
 		t.Fatalf("expected exit code 1, got %d", exitErr.ExitCode())
+	}
+}
+
+func TestMainSucceedsWithNoopChecksAndJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api":
+			_, _ = w.Write([]byte(`{"kind":"APIVersions","versions":["v1"],"serverAddressByClientCIDRs":[]}`))
+		default:
+			_, _ = w.Write([]byte(`{"kind":"Status","apiVersion":"v1","status":"Success"}`))
+		}
+	}))
+	defer server.Close()
+
+	kubeconfigPath := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(kubeconfigPath, kubeconfigBytesForMain(t, server.URL), 0o644); err != nil {
+		t.Fatalf("write kubeconfig: %v", err)
+	}
+
+	if os.Getenv("KDOC_MAIN_SUCCESS_SUBPROCESS") == "1" {
+		oldArgs := os.Args
+		oldCommandLine := flag.CommandLine
+		defer func() {
+			os.Args = oldArgs
+			flag.CommandLine = oldCommandLine
+		}()
+
+		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+		os.Args = []string{
+			"k8doc",
+			"-kubeconfig", os.Getenv("KDOC_TEST_KUBECONFIG"),
+			"-checks", "noop",
+			"-output", "json",
+			"-enable-active-probes",
+			"-enable-host-network-probes",
+			"-probe-target-classes", "ingress,dns",
+			"-tls-probe-mode", "verify",
+		}
+		main()
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestMainSucceedsWithNoopChecksAndJSON")
+	cmd.Env = append(os.Environ(), "KDOC_MAIN_SUCCESS_SUBPROCESS=1", "KDOC_TEST_KUBECONFIG="+kubeconfigPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("expected successful main run, got %v output=%s", err, string(output))
+	}
+	if !strings.Contains(string(output), `"schemaVersion": "v1alpha2"`) || !strings.Contains(string(output), `"execution"`) || !strings.Contains(string(output), `"probePolicy"`) {
+		t.Fatalf("expected execution-aware json output, got %s", string(output))
 	}
 }
 

@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://k8doc.dev/schema/k8doc-report-v1alpha2.schema.json",
+  "title": "k8doc report v1alpha2",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "summary", "issues", "execution", "options"],
+  "properties": {
+    "schemaVersion": {"const": "v1alpha2"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "summary": {"$ref": "#/$defs/healthSummary"},
+    "issues": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "execution": {"$ref": "#/$defs/executionSummary"},
+    "probePolicy": {"$ref": "#/$defs/probePolicy"},
+    "options": {"$ref": "#/$defs/options"}
+  },
+  "$defs": {
+    "issue": {
+      "type": "object",
+      "required": ["kind", "severity", "summary", "recommendation"],
+      "properties": {
+        "kind": {"type": "string"},
+        "namespace": {"type": "string"},
+        "name": {"type": "string"},
+        "severity": {"enum": ["info", "warning", "critical"]},
+        "category": {"type": "string"},
+        "check": {"type": "string"},
+        "detection": {"type": "string"},
+        "confidence": {"type": "string"},
+        "summary": {"type": "string"},
+        "recommendation": {"type": "string"},
+        "references": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "executionRecord": {
+      "type": "object",
+      "required": ["name", "scope", "status"],
+      "properties": {
+        "name": {"type": "string"},
+        "scope": {"type": "string"},
+        "status": {"enum": ["ok", "finding", "skipped", "error", "not-applicable", "partial"]},
+        "durationMs": {"type": "integer", "minimum": 0},
+        "issueCount": {"type": "integer", "minimum": 0},
+        "slow": {"type": "boolean"},
+        "errorCode": {"type": "string"},
+        "errorMessage": {"type": "string"},
+        "permissionHint": {"type": "boolean"}
+      }
+    },
+    "capabilityCheck": {
+      "type": "object",
+      "required": ["name", "allowed"],
+      "properties": {
+        "name": {"type": "string"},
+        "namespace": {"type": "string"},
+        "verb": {"type": "string"},
+        "resource": {"type": "string"},
+        "allowed": {"type": "boolean"},
+        "reason": {"type": "string"},
+        "errorMessage": {"type": "string"}
+      }
+    },
+    "runtimeStats": {
+      "type": "object",
+      "properties": {
+        "memoryAllocBytes": {"type": "integer", "minimum": 0},
+        "totalAllocBytes": {"type": "integer", "minimum": 0},
+        "sysBytes": {"type": "integer", "minimum": 0},
+        "numGC": {"type": "integer", "minimum": 0},
+        "slowChecks": {"type": "integer", "minimum": 0},
+        "slowSections": {"type": "integer", "minimum": 0}
+      }
+    },
+    "executionSummary": {
+      "type": "object",
+      "required": ["status", "startedAt", "finishedAt", "durationMs"],
+      "properties": {
+        "status": {"enum": ["ok", "finding", "skipped", "error", "not-applicable", "partial"]},
+        "traceId": {"type": "string"},
+        "startedAt": {"type": "string", "format": "date-time"},
+        "finishedAt": {"type": "string", "format": "date-time"},
+        "durationMs": {"type": "integer", "minimum": 0},
+        "apiCalls": {"type": "integer", "minimum": 0},
+        "runtime": {"$ref": "#/$defs/runtimeStats"},
+        "preflight": {
+          "type": "object",
+          "properties": {
+            "status": {"enum": ["ok", "finding", "skipped", "error", "not-applicable", "partial"]},
+            "checks": {"type": "array", "items": {"$ref": "#/$defs/capabilityCheck"}}
+          }
+        },
+        "checks": {"type": "array", "items": {"$ref": "#/$defs/executionRecord"}},
+        "sections": {"type": "array", "items": {"$ref": "#/$defs/executionRecord"}},
+        "skippedChecks": {"type": "integer", "minimum": 0},
+        "erroredChecks": {"type": "integer", "minimum": 0}
+      }
+    },
+    "healthSummary": {
+      "type": "object",
+      "required": ["score", "critical", "warning", "info", "categories"],
+      "properties": {
+        "score": {"type": "integer"},
+        "critical": {"type": "integer", "minimum": 0},
+        "warning": {"type": "integer", "minimum": 0},
+        "info": {"type": "integer", "minimum": 0},
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["category", "score", "critical", "warning", "info"],
+            "properties": {
+              "category": {"type": "string"},
+              "score": {"type": "integer"},
+              "critical": {"type": "integer", "minimum": 0},
+              "warning": {"type": "integer", "minimum": 0},
+              "info": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    },
+    "probePolicy": {
+      "type": "object",
+      "properties": {
+        "enableActiveProbes": {"type": "boolean"},
+        "enableHostNetworkProbes": {"type": "boolean"},
+        "targetClasses": {"type": "object", "additionalProperties": {"type": "boolean"}},
+        "tlsProbeMode": {"type": "string"}
+      }
+    },
+    "options": {
+      "type": "object",
+      "required": ["mode", "output"],
+      "properties": {
+        "mode": {"type": "string"},
+        "profile": {"type": "string"},
+        "output": {"type": "string"},
+        "failOn": {"type": "string"},
+        "baselinePath": {"type": "string"},
+        "writeBaselinePath": {"type": "string"},
+        "timelineLimit": {"type": "integer", "minimum": 0},
+        "strictReportErrors": {"type": "boolean"},
+        "appliedRules": {"type": "array", "items": {"type": "string"}},
+        "focus": {
+          "type": "object",
+          "properties": {
+            "kind": {"type": "string"},
+            "value": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}

@@ -76,8 +76,15 @@ func TestCheckerRunWithManyEnabledChecks(t *testing.T) {
 		},
 	}
 
-	if _, err := checker.Run(context.Background()); err == nil {
-		t.Fatal("expected checker run with generic failing backend to return an error")
+	result, err := checker.RunDetailed(context.Background())
+	if err != nil {
+		t.Fatalf("expected best-effort checker run to succeed, got %v", err)
+	}
+	if result.Execution.ErroredChecks == 0 {
+		t.Fatalf("expected errored checks to be recorded, got %+v", result.Execution)
+	}
+	if result.Execution.Status != ExecutionStatusPartial {
+		t.Fatalf("expected partial execution status, got %+v", result.Execution)
 	}
 }
 
